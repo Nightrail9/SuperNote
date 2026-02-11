@@ -53,6 +53,7 @@
 - [使用方法](#使用方法)
   - [API 端点](#api-端点)
 - [开发](#开发)
+- [Docker 部署](#docker-部署)
 - [项目结构](#项目结构)
 - [故障排除](#故障排除)
 - [安全性](#安全性)
@@ -162,6 +163,49 @@ npm run build
 ```
 
 当存在 `frontend-vue/dist/index.html` 时，后端会自动托管前端构建产物。
+
+## Docker 部署
+
+仓库已提供多阶段 `Dockerfile` 和可直接使用的 `docker-compose.yml`。
+
+### 1. 准备环境变量
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 并填入需要的配置（仅解析功能可用最小配置；如需转录和 AI 笔记，请补全听悟/OSS/API 相关配置）。
+
+### 2. 使用 Docker Compose 构建并启动
+
+```bash
+docker compose up -d --build
+```
+
+启动后可访问：
+- Web 应用与 API：`http://localhost:3000`
+- 健康检查：`http://localhost:3000/health`
+
+### 3. 常用命令
+
+```bash
+# 查看日志
+docker compose logs -f app
+
+# 停止容器
+docker compose down
+
+# 代码更新后重新构建
+docker compose up -d --build
+```
+
+### 4. 数据持久化
+
+`docker-compose.yml` 已将本地目录挂载到容器：
+- `./data` -> `/app/data`（笔记、草稿、设置、任务记录）
+- `./temp` -> `/app/temp`（临时文件）
+
+因此容器重启或重建后数据仍会保留。
 
 ## 配置
 

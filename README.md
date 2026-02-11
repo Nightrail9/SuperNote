@@ -53,6 +53,7 @@ The project includes both a REST API backend and a Vue 3 frontend app. The backe
 - [Usage](#usage)
   - [API Endpoints](#api-endpoints)
 - [Development](#development)
+- [Docker Deployment](#docker-deployment)
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
 - [Security](#security)
@@ -162,6 +163,49 @@ npm run build
 ```
 
 If `frontend-vue/dist/index.html` exists, the backend serves the frontend build automatically.
+
+## Docker Deployment
+
+The repository includes a multi-stage `Dockerfile` and a ready-to-use `docker-compose.yml`.
+
+### 1. Prepare environment variables
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and fill the required keys (for parsing only, minimal config is enough; for transcription and AI notes, set Tingwu/OSS/API settings too).
+
+### 2. Build and start with Docker Compose
+
+```bash
+docker compose up -d --build
+```
+
+After startup:
+- Web app and API: `http://localhost:3000`
+- Health check: `http://localhost:3000/health`
+
+### 3. Useful commands
+
+```bash
+# View logs
+docker compose logs -f app
+
+# Stop containers
+docker compose down
+
+# Rebuild after code updates
+docker compose up -d --build
+```
+
+### 4. Data persistence
+
+`docker-compose.yml` maps local folders to the container:
+- `./data` -> `/app/data` (notes, drafts, settings, task records)
+- `./temp` -> `/app/temp` (temporary files)
+
+So data remains after container restart/recreate.
 
 ## Configuration
 

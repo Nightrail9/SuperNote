@@ -18,6 +18,7 @@ export function createTasksRouter(): Router {
         stage: task.stage,
         progress: task.progress,
         message: task.message,
+        suggestedTitle: task.suggestedTitle,
         sourceType: task.sourceType,
         resultMd: task.resultMd,
         error: task.error,

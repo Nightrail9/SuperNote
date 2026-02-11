@@ -1,7 +1,10 @@
 node_modules
+frontend-vue/node_modules
+frontend-vue/dist
 dist
 .git
 .gitignore
+.agents
 *.md
 .env
 .env.*

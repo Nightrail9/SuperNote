@@ -11,7 +11,16 @@ export const api = {
     return http.post<{ taskId: string }>('/notes/generate', { sourceUrl, promptId, modelId, sourceType })
   },
   getTask(taskId: string) {
-    return http.get<{ status: string; stage?: string; progress?: number; message?: string; sourceType?: 'bilibili' | 'web'; resultMd?: string; error?: string }>(`/tasks/${taskId}`)
+    return http.get<{
+      status: string
+      stage?: string
+      progress?: number
+      message?: string
+      suggestedTitle?: string
+      sourceType?: 'bilibili' | 'web'
+      resultMd?: string
+      error?: string
+    }>(`/tasks/${taskId}`)
   },
   createDraft(payload: { sourceUrl?: string; title?: string; contentMd: string }) {
     return http.post<{ draftId: string; updatedAt: string }>('/drafts', payload)

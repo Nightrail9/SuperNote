@@ -11,6 +11,7 @@ import { formatDateTime } from '../../utils/datetime'
 import { buildPageKeywordQuery, resolveRowIndexById } from '../../utils/list'
 
 const MarkdownPreview = defineAsyncComponent(() => import('../../components/markdown/MarkdownPreview.vue'))
+const MarkdownEditor = defineAsyncComponent(() => import('../../components/markdown/MarkdownEditor.vue'))
 
 const route = useRoute()
 const router = useRouter()
@@ -24,10 +25,19 @@ const previewOpen = ref(false)
 const activeDraft = ref<Draft | null>(null)
 const activePreviewIndex = ref(-1)
 const previewLoading = ref(false)
+const editingOpen = ref(false)
+const activeEditDraftId = ref<string | null>(null)
+const activeEditIndex = ref(-1)
+const editLoading = ref(false)
+const editTitle = ref('')
+const editMarkdown = ref('')
+const saveLoading = ref(false)
 const publishLoading = ref(false)
 
 const canPreviewPrev = computed(() => activePreviewIndex.value > 0)
 const canPreviewNext = computed(() => activePreviewIndex.value >= 0 && activePreviewIndex.value < filteredItems.value.length - 1)
+const canEditPrev = computed(() => activeEditIndex.value > 0)
+const canEditNext = computed(() => activeEditIndex.value >= 0 && activeEditIndex.value < filteredItems.value.length - 1)
 
 const page = computed(() => {
   const value = Number(route.query.page)
@@ -114,17 +124,65 @@ function closePreview() {
   activeDraft.value = null
 }
 
-function continueEdit(draft: Draft) {
-  void router.push({
-    path: '/create/bilibili',
-    state: {
-      draft: {
-        id: draft.id,
-        title: draft.title,
-        sourceUrl: draft.sourceUrl,
-      },
-    },
-  })
+async function loadEditByIndex(index: number) {
+  const target = filteredItems.value[index]
+  if (!target) return
+
+  editLoading.value = true
+  try {
+    const detail = await api.getDraft(target.id)
+    activeEditDraftId.value = detail.data.id
+    activeEditIndex.value = index
+    editTitle.value = detail.data.title ?? ''
+    editMarkdown.value = detail.data.contentMd ?? ''
+    editingOpen.value = true
+  } catch (error) {
+    ElMessage.error((error as { message?: string }).message ?? '获取草稿失败')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+async function openEdit(index: number, id: string) {
+  const resolvedIndex = resolveRowIndexById(filteredItems.value, index, id)
+  if (resolvedIndex < 0) return
+  await loadEditByIndex(resolvedIndex)
+}
+
+async function editPrev() {
+  if (!canEditPrev.value || saveLoading.value) return
+  await loadEditByIndex(activeEditIndex.value - 1)
+}
+
+async function editNext() {
+  if (!canEditNext.value || saveLoading.value) return
+  await loadEditByIndex(activeEditIndex.value + 1)
+}
+
+function closeEdit() {
+  editingOpen.value = false
+  activeEditDraftId.value = null
+  activeEditIndex.value = -1
+  editTitle.value = ''
+  editMarkdown.value = ''
+}
+
+async function saveEdit() {
+  if (!activeEditDraftId.value) return
+  saveLoading.value = true
+  try {
+    await api.updateDraft(activeEditDraftId.value, {
+      title: editTitle.value.trim() || undefined,
+      contentMd: editMarkdown.value,
+    })
+    ElMessage.success('草稿已更新')
+    editingOpen.value = false
+    await loadDrafts()
+  } catch (error) {
+    ElMessage.error((error as { message?: string }).message ?? '更新草稿失败')
+  } finally {
+    saveLoading.value = false
+  }
 }
 
 async function publishDraft(draft: Draft) {
@@ -188,8 +246,8 @@ onMounted(() => {
         </template>
         <template #cell-actions="{ row, index }">
           <div class="table-actions">
-            <el-button :icon="Edit" link @click="continueEdit(toDraft(row))" />
             <el-button :icon="View" link @click="openPreview(index, row.id)" />
+            <el-button :icon="Edit" link @click="openEdit(index, row.id)" />
             <el-button :icon="Promotion" link :loading="publishLoading" @click="publishDraft(toDraft(row))" />
             <el-button :icon="Delete" link type="danger" @click="removeDraft(row.id)" />
           </div>
@@ -228,6 +286,34 @@ onMounted(() => {
       <div v-loading="previewLoading" class="history-preview-body">
         <MarkdownPreview v-if="previewOpen || previewLoading" :source="activeDraft?.contentMd || ''" />
       </div>
+    </el-dialog>
+
+    <el-dialog
+      v-model="editingOpen"
+      title="编辑草稿"
+      width="72%"
+      align-center
+      append-to-body
+      class="history-preview-dialog history-edit-dialog"
+      :z-index="3100"
+      :close-on-click-modal="false"
+      @closed="closeEdit"
+    >
+      <div class="history-preview-toolbar">
+        <el-text type="info" class="history-preview-counter">第 {{ activeEditIndex + 1 }} / {{ filteredItems.length }} 条</el-text>
+        <div class="history-preview-nav">
+          <el-button :disabled="!canEditPrev || editLoading || saveLoading" @click="editPrev">上一条</el-button>
+          <el-button type="primary" :disabled="!canEditNext || editLoading || saveLoading" @click="editNext">下一条</el-button>
+        </div>
+      </div>
+      <el-space v-loading="editLoading" direction="vertical" class="full-width-stack">
+        <el-input v-model="editTitle" placeholder="草稿标题" />
+        <MarkdownEditor v-if="editingOpen || editLoading" :value="editMarkdown" :height="460" @change="(next) => (editMarkdown = next)" />
+      </el-space>
+      <template #footer>
+        <el-button @click="closeEdit">取消</el-button>
+        <el-button type="primary" :loading="saveLoading" @click="saveEdit">保存</el-button>
+      </template>
     </el-dialog>
   </PageBlock>
 </template>

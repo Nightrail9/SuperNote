@@ -72,6 +72,7 @@ export type TaskRecord = {
   stage?: string;
   progress?: number;
   message?: string;
+  suggestedTitle?: string;
   sourceUrl: string;
   sourceType?: 'bilibili' | 'web';
   promptId?: string;

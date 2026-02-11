@@ -31,7 +31,15 @@ const polling = ref(false)
 const saveDraftLoading = ref(false)
 const saveNoteLoading = ref(false)
 
-const task = ref<{ status: string; stage?: string; progress?: number; message?: string; resultMd?: string; error?: string } | null>(null)
+const task = ref<{
+  status: string
+  stage?: string
+  progress?: number
+  message?: string
+  suggestedTitle?: string
+  resultMd?: string
+  error?: string
+} | null>(null)
 let timer: number | undefined
 
 function resolveTitle(md: string) {
@@ -102,6 +110,9 @@ async function fetchTask() {
   try {
     const response = await api.getTask(taskId.value)
     task.value = response.data
+    if (!noteTitle.value.trim() && response.data.suggestedTitle?.trim()) {
+      noteTitle.value = response.data.suggestedTitle.trim()
+    }
   } catch (error) {
     ElMessage.error((error as { message?: string }).message ?? '获取任务失败')
   } finally {
@@ -258,7 +269,7 @@ onBeforeUnmount(() => {
         </div>
 
         <el-space direction="vertical" class="full-width-stack">
-          <el-input v-model="noteTitle" placeholder="笔记标题（可选，不填将从 Markdown 自动提取）" />
+          <el-input v-model="noteTitle" placeholder="笔记标题（默认按抓取网页标题自动填写，可手动修改）" />
           <el-alert
             v-if="!sourceUrlFirstValid"
             type="warning"

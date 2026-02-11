@@ -62,6 +62,52 @@ function buildCombinedWebMarkdown(contents: Array<{ url: string; title?: string;
   return ['# 网页抓取内容汇总', '', ...blocks].join('\n').trim();
 }
 
+function simplifyTitle(raw: string): string {
+  const normalized = raw
+    .replace(/\s+/g, ' ')
+    .replace(/[【】\[\]]/g, '')
+    .trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const primary = normalized
+    .split(/[|｜_]/)
+    .map((item) => item.trim())
+    .filter(Boolean)[0] ?? normalized;
+
+  const short =
+    primary
+      .split(/\s[-–—]\s/)
+      .map((item) => item.trim())
+      .filter(Boolean)[0] ?? primary;
+
+  if (short.length <= 28) {
+    return short;
+  }
+  return `${short.slice(0, 27).trim()}…`;
+}
+
+function buildSuggestedWebTitle(contents: Array<{ title?: string }>): string | undefined {
+  const titles = contents
+    .map((item) => simplifyTitle(item.title ?? ''))
+    .filter((item) => item.length > 0);
+
+  if (!titles.length) {
+    return undefined;
+  }
+
+  const firstTitle = titles[0] ?? '';
+  if (titles.length === 1) {
+    return firstTitle;
+  }
+
+  const suffix = `等${titles.length}篇`;
+  const maxPrefixLength = Math.max(8, 28 - suffix.length);
+  const prefix = firstTitle.length > maxPrefixLength ? `${firstTitle.slice(0, maxPrefixLength - 1).trim()}…` : firstTitle;
+  return `${prefix}${suffix}`;
+}
+
 function resolveModel(modelId?: string): ModelConfigRecord | undefined {
   const models = getAppData().settings.models;
   if (modelId) {
@@ -160,6 +206,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
     }
 
     let mergedMarkdown = '';
+    let suggestedTitle: string | undefined;
     const totalUrls = validUrls.length;
 
     if (sourceType === 'web') {
@@ -224,6 +271,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       }
 
       mergedMarkdown = buildCombinedWebMarkdown(webContents);
+      suggestedTitle = buildSuggestedWebTitle(webContents);
     } else {
       const pipeline = createSummaryPipeline(loadSummaryPipelineConfig());
       const sourceMarkdownList: Array<{ url: string; content: string }> = [];
@@ -309,6 +357,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       stage: 'done',
       progress: 100,
       message: '生成完成',
+      suggestedTitle,
       resultMd,
       error: undefined,
     });

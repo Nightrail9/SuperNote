@@ -1,0 +1,17 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bilibili-video-parser
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    volumes:
+      - ./data:/app/data
+      - ./temp:/app/temp
+    restart: unless-stopped
