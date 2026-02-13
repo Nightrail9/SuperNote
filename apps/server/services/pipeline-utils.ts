@@ -12,12 +12,15 @@ import * as path from 'path';
 import { Readable } from 'stream';
 import { pipeline as pipelineStream } from 'stream/promises';
 import { logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
+import { isRetryableError, sleep } from '../utils/retry.js';
+import { RETRY_CONFIG } from '../constants/index.js';
 
 /**
- * Default retry configuration
+ * Default retry configuration - re-exported from constants for backward compatibility
+ * @deprecated Use RETRY_CONFIG from '../constants/index.js' instead
  */
-export const DEFAULT_MAX_RETRIES = 3;
-export const DEFAULT_RETRY_DELAY_MS = 1000;
+export const DEFAULT_MAX_RETRIES = RETRY_CONFIG.MAX_RETRIES;
+export const DEFAULT_RETRY_DELAY_MS = RETRY_CONFIG.BASE_DELAY_MS;
 
 /**
  * Video info extracted from Bilibili
@@ -169,7 +172,7 @@ export class DefaultVideoDownloader implements VideoDownloader {
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
         if (attempt > 0) {
-          await this.sleep(this.retryDelayMs * Math.pow(2, attempt - 1));
+          await sleep(this.retryDelayMs * Math.pow(2, attempt - 1));
         }
 
         const response = await fetch(url, { headers, signal: options?.signal });
@@ -205,29 +208,13 @@ export class DefaultVideoDownloader implements VideoDownloader {
           attempt: attempt + 1,
           maxRetries: this.maxRetries,
         });
-        if (!this.isRetryableError(lastError)) {
+        if (!isRetryableError(lastError)) {
           throw lastError;
         }
       }
     }
 
     throw lastError ?? new Error('Download failed after retries');
-  }
-
-  private isRetryableError(error: Error): boolean {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes('network') ||
-      message.includes('timeout') ||
-      message.includes('econnreset') ||
-      message.includes('econnrefused') ||
-      message.includes('429') ||
-      message.includes('rate')
-    );
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

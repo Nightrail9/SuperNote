@@ -13,28 +13,16 @@ import {
 import { DefaultAIOrganizer } from '../services/ai-organizer.js';
 import { normalizeJinaReaderEndpoint, readWebPageWithJina } from '../services/jina-reader-client.js';
 import { sendApiError, toErrorMessage } from '../utils/http-error.js';
+import { normalizeBaseUrl, isGeminiNativeUrl, stripApiPath } from '../utils/url-helpers.js';
+import { createAbortSignal } from '../utils/retry.js';
+import { TIMEOUTS } from '../constants/index.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-const DETECT_TIMEOUT_MS = 12000;
 const execFileAsync = promisify(execFile);
 
-export function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, '');
-}
-
-export function isGeminiNativeUrl(baseUrl: string): boolean {
-  try {
-    const url = new URL(baseUrl);
-    return url.hostname.includes('generativelanguage.googleapis.com');
-  } catch {
-    return false;
-  }
-}
-
 function buildOpenAIModelsEndpoint(baseUrl: string): string {
-  let normalized = normalizeBaseUrl(baseUrl);
-  normalized = normalized.replace(/\/(chat\/completions|completions|responses)$/i, '');
+  const normalized = stripApiPath(baseUrl);
   return `${normalized}/models`;
 }
 
@@ -69,11 +57,7 @@ function resolveDetectErrorMessage(error: unknown): string {
   return '模型检测失败，请检查配置';
 }
 
-function createAbortSignal(timeoutMs: number): AbortSignal {
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), timeoutMs).unref?.();
-  return controller.signal;
-}
+
 
 function stripModelApiPath(baseUrl: string): string {
   return normalizeBaseUrl(baseUrl).replace(/\/(chat\/completions|completions|responses)$/i, '');
@@ -96,7 +80,7 @@ async function testModelReachability(options: {
       provider: options.provider,
       modelName: options.modelName,
       prompt: '请回复 ok',
-      timeoutMs: DETECT_TIMEOUT_MS,
+      timeoutMs: TIMEOUTS.MODEL_DETECT_MS,
     });
 
     if (!result.success) {
@@ -124,7 +108,7 @@ async function testModelReachability(options: {
 async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(url, {
     ...init,
-    signal: createAbortSignal(DETECT_TIMEOUT_MS),
+    signal: createAbortSignal(TIMEOUTS.MODEL_DETECT_MS),
   });
 
   const text = await response.text();

@@ -9,6 +9,7 @@
 
 import { getErrorMessage } from '../utils/error-messages.js';
 import { logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
+import { normalizeBaseUrl, isGeminiNativeUrl } from '../utils/url-helpers.js';
 
 /**
  * Configuration for an AI organize request.
@@ -59,19 +60,6 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   chatgpt: 'gpt-5-mini',
   openai_compatible: 'gpt-4o-mini',
 };
-
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, '');
-}
-
-function isGeminiNativeUrl(baseUrl: string): boolean {
-  try {
-    const url = new URL(baseUrl);
-    return url.hostname.includes('generativelanguage.googleapis.com');
-  } catch {
-    return false;
-  }
-}
 
 function normalizeProvider(config: AIOrganizeConfig): 'gemini' | 'chatgpt' | 'openai_compatible' {
   const provider = (config.provider ?? '').trim().toLowerCase();
