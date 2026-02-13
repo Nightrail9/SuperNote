@@ -1,0 +1,353 @@
+/**
+ * Modern Theme System
+ * 
+ * 现代色彩系统，支持亮色/暗色模式手动切换
+ * 设计特点：
+ * - 蓝紫色调品牌色（更现代）
+ * - 渐变背景（柔和现代感）
+ * - 高对比度确保可读性
+ * - 平滑的主题过渡动画
+ */
+
+/* ==========================================================================
+   Base Variables (Light Mode - Default)
+   ========================================================================== */
+
+:root {
+  /* Primary Color Scale - Indigo */
+  --primary-50: #eef2ff;
+  --primary-100: #e0e7ff;
+  --primary-200: #c7d2fe;
+  --primary-300: #a5b4fc;
+  --primary-400: #818cf8;
+  --primary-500: #6366f1;
+  --primary-600: #4f46e5;
+  --primary-700: #4338ca;
+  --primary-800: #3730a3;
+  --primary-900: #312e81;
+
+  /* Accent Color - Violet */
+  --accent-500: #8b5cf6;
+  --accent-600: #7c3aed;
+
+  /* Semantic Colors */
+  --success-500: #10b981;
+  --success-600: #059669;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+  --error-500: #ef4444;
+  --error-600: #dc2626;
+  --info-500: #3b82f6;
+  --info-600: #2563eb;
+
+  /* Background Colors */
+  --bg-page: #fafafa;
+  --bg-page-gradient-start: #fafafa;
+  --bg-page-gradient-end: #f0f0f5;
+  --bg-page-gradient: linear-gradient(135deg, var(--bg-page-gradient-start) 0%, var(--bg-page-gradient-end) 100%);
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-soft: #f8fafc;
+  --bg-muted: #f1f5f9;
+  --bg-hover: rgba(99, 102, 241, 0.04);
+  --bg-active: rgba(99, 102, 241, 0.08);
+
+  /* Text Colors */
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --text-disabled: #cbd5e1;
+  --text-inverse: #ffffff;
+
+  /* Border Colors */
+  --border: #e2e8f0;
+  --border-soft: #f1f5f9;
+  --border-hover: #cbd5e1;
+  --border-focus: var(--primary-500);
+
+  /* Shadow System */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+  --shadow-glow-sm: 0 0 10px rgba(99, 102, 241, 0.1);
+
+  /* Focus Ring */
+  --focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  --focus-ring-error: 0 0 0 3px rgba(239, 68, 68, 0.15);
+
+  /* Legacy Support */
+  --brand: var(--primary-500);
+  --brand-strong: var(--primary-600);
+  --accent: var(--accent-500);
+
+  /* --------------------------------------------------------------------------
+     Extended Design Tokens - Additional Variables
+     -------------------------------------------------------------------------- */
+  
+  /* Spacing System */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Border Radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* Typography */
+  --font-sans: 'Inter', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-serif: 'Playfair Display', 'Noto Serif SC', serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-theme: 300ms ease-in-out;
+
+  /* Z-Index Scale */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-toast: 1080;
+
+  /* Layout */
+  --content-max-width: 1240px;
+  --sidebar-width: 264px;
+  --header-height: 64px;
+}
+
+/* ==========================================================================
+   Dark Mode Variables
+   ========================================================================== */
+
+[data-theme="dark"] {
+  /* Background Colors */
+  --bg-page: #0f172a;
+  --bg-page-gradient-start: #0f172a;
+  --bg-page-gradient-end: #1e1b4b;
+  --bg-page-gradient: linear-gradient(135deg, var(--bg-page-gradient-start) 0%, var(--bg-page-gradient-end) 100%);
+  --bg-surface: #1e293b;
+  --bg-elevated: #334155;
+  --bg-soft: #1e293b;
+  --bg-muted: #334155;
+  --bg-hover: rgba(99, 102, 241, 0.08);
+  --bg-active: rgba(99, 102, 241, 0.12);
+
+  /* Text Colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --text-disabled: #64748b;
+  --text-inverse: #0f172a;
+
+  /* Border Colors */
+  --border: #334155;
+  --border-soft: #475569;
+  --border-hover: #64748b;
+  --border-focus: var(--primary-400);
+
+  /* Shadow System - darker for dark mode */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.25);
+  --shadow-glow-sm: 0 0 15px rgba(99, 102, 241, 0.15);
+
+  /* Focus Ring */
+  --focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.25);
+  --focus-ring-error: 0 0 0 3px rgba(239, 68, 68, 0.25);
+
+  /* Brand colors slightly brighter in dark mode for better visibility */
+  --primary-400: #a5b4fc;
+  --primary-500: #818cf8;
+  --primary-600: #6366f1;
+}
+
+/* ==========================================================================
+   Theme Transition
+   ========================================================================== */
+
+/* Smooth theme transition for all theme-able properties */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color 0.3s ease,
+              border-color 0.3s ease,
+              color 0.3s ease,
+              fill 0.3s ease,
+              stroke 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+/* Disable transition for performance-critical elements */
+.theme-transition .no-theme-transition,
+.theme-transition .no-theme-transition * {
+  transition: none !important;
+}
+
+/* ==========================================================================
+   Theme Toggle Button Styles
+   ========================================================================== */
+
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--primary-500);
+  color: var(--primary-500);
+  box-shadow: var(--shadow-glow-sm);
+}
+
+.theme-toggle-btn:active {
+  transform: scale(0.95);
+}
+
+.theme-toggle-btn .icon-sun,
+.theme-toggle-btn .icon-moon {
+  position: absolute;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sun icon - visible in light mode */
+.theme-toggle-btn .icon-sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+[data-theme="dark"] .theme-toggle-btn .icon-sun {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.5);
+}
+
+/* Moon icon - visible in dark mode */
+.theme-toggle-btn .icon-moon {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.5);
+}
+
+[data-theme="dark"] .theme-toggle-btn .icon-moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+/* ==========================================================================
+   Glass Morphism Effect
+   ========================================================================== */
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="dark"] .glass {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ==========================================================================
+   Gradient Backgrounds
+   ========================================================================== */
+
+.gradient-bg {
+  background: linear-gradient(135deg, var(--bg-page-gradient-start) 0%, var(--bg-page-gradient-end) 100%);
+  background-attachment: fixed;
+}
+
+.gradient-bg-subtle {
+  background: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.05) 0px, transparent 50%),
+    var(--bg-page);
+  background-attachment: fixed;
+}
+
+/* ==========================================================================
+   Status Colors
+   ========================================================================== */
+
+.status-success { color: var(--success-500); }
+.status-warning { color: var(--warning-500); }
+.status-error { color: var(--error-500); }
+.status-info { color: var(--info-500); }
+
+.bg-status-success { background-color: rgba(16, 185, 129, 0.1); }
+.bg-status-warning { background-color: rgba(245, 158, 11, 0.1); }
+.bg-status-error { background-color: rgba(239, 68, 68, 0.1); }
+.bg-status-info { background-color: rgba(59, 130, 246, 0.1); }
+
+/* ==========================================================================
+   Utility Classes
+   ========================================================================== */
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--primary-500) 0%, var(--accent-500) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.bg-gradient-brand {
+  background: linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%);
+}
+
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Focus visible for accessibility */
+.focus-visible:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Selection color */
+::selection {
+  background-color: var(--primary-200);
+  color: var(--primary-900);
+}
+
+[data-theme="dark"] ::selection {
+  background-color: var(--primary-700);
+  color: var(--primary-100);
+}

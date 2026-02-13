@@ -30,7 +30,7 @@ echo Starting frontend on %FRONTEND_PORT%...
 echo Local: http://localhost:%FRONTEND_PORT%/
 echo Press Ctrl+C to stop.
 
-npm --prefix frontend-vue run dev -- --port %FRONTEND_PORT% --strictPort
+npm --prefix apps/web run dev -- --port %FRONTEND_PORT% --strictPort
 
 exit /b 0
 

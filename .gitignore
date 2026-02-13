@@ -7,7 +7,11 @@ coverage/
 *.tsbuildinfo
 
 # Runtime outputs
+storage/temp/
 temp/
+
+# Legacy path kept locally when files are locked by editor/processes
+frontend-vue/
 
 # Logs
 *.log

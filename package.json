@@ -15,7 +15,7 @@
     "build": "tsc",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx web/server/index.ts"
+    "dev": "tsx apps/server/index.ts"
   },
   "keywords": [
     "bilibili",
@@ -38,9 +38,8 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@alicloud/openapi-client": "^0.4.15",
-    "@alicloud/tingwu20230930": "^2.0.23",
     "dotenv": "^17.2.4",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "punycode": "^2.3.1"
   }
 }

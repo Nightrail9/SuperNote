@@ -6,15 +6,15 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-COPY frontend-vue/package*.json ./frontend-vue/
-RUN npm ci --prefix frontend-vue
+COPY apps/web/package*.json ./apps/web/
+RUN npm ci --prefix apps/web
 
 FROM deps AS builder
 WORKDIR /app
 COPY . .
 
 # Build frontend static files for Express static hosting.
-RUN npm --prefix frontend-vue run build
+RUN npm --prefix apps/web run build
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
@@ -26,14 +26,13 @@ RUN addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/web ./web
-COPY --from=builder /app/frontend-vue/dist ./frontend-vue/dist
+COPY --from=builder /app/apps ./apps
+COPY --from=builder /app/packages ./packages
 
-RUN mkdir -p /app/data /app/temp && chown -R app:app /app
+RUN mkdir -p /app/storage/data /app/storage/temp && chown -R app:app /app
 
 USER app
 
 EXPOSE 3000
 
-CMD ["node", "--import", "tsx", "web/server/index.ts"]
+CMD ["node", "--import", "tsx", "apps/server/index.ts"]

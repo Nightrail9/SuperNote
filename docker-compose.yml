@@ -12,6 +12,6 @@ services:
       NODE_ENV: production
       PORT: 3000
     volumes:
-      - ./data:/app/data
-      - ./temp:/app/temp
+      - ./storage/data:/app/storage/data
+      - ./storage/temp:/app/storage/temp
     restart: unless-stopped
