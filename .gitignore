@@ -28,6 +28,8 @@ pnpm-debug.log*
 .vscode/
 .kiro/
 .agents/
+.gemini/
+GEMINI.md
 
 # OS files
 .DS_Store
