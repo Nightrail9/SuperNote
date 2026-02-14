@@ -17,11 +17,17 @@ const props = withDefaults(
     loading?: boolean
     emptyText?: string
     rowKey?: string
+    fitToContainer?: boolean
+    fixedBodyRows?: number
+    estimatedRowHeight?: number
   }>(),
   {
     loading: false,
     emptyText: '暂无数据',
     rowKey: 'id',
+    fitToContainer: true,
+    fixedBodyRows: 0,
+    estimatedRowHeight: 54,
   },
 )
 
@@ -45,6 +51,12 @@ const gridTemplateColumns = computed(() => {
 })
 
 const tableMinWidth = computed(() => Math.max(Math.round(totalMinWidth.value), 1))
+const bodyMinHeight = computed(() => {
+  if (!props.fixedBodyRows || props.fixedBodyRows <= 0) {
+    return undefined
+  }
+  return `${Math.round(props.fixedBodyRows * props.estimatedRowHeight)}px`
+})
 
 function getColumnFlex(column: TableColumn) {
   return Math.max(column.flex ?? 1, 0.2)
@@ -81,7 +93,7 @@ function calculateInitialWidths(containerWidth: number) {
   const mins = minWidths.value
   const flexValues = props.columns.map((column) => getColumnFlex(column))
   const totalFlex = flexValues.reduce((sum, value) => sum + value, 0) || 1
-  const expectedTotal = Math.max(containerWidth, totalMinWidth.value)
+  const expectedTotal = props.fitToContainer ? Math.max(containerWidth, totalMinWidth.value) : totalMinWidth.value
 
   const baseWidths = props.columns.map((_, index) => {
     const flex = flexValues[index] ?? 1
@@ -91,6 +103,10 @@ function calculateInitialWidths(containerWidth: number) {
 }
 
 function scaleWidths(previous: number[], containerWidth: number) {
+  if (!props.fitToContainer) {
+    return previous
+  }
+
   const mins = minWidths.value
   const targetTotal = Math.max(containerWidth, totalMinWidth.value)
   const previousTotal = previous.reduce((sum, width) => sum + width, 0)
@@ -227,7 +243,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="rows.length" class="history-table-v2-body">
+      <div v-if="rows.length" class="history-table-v2-body" :style="bodyMinHeight ? { minHeight: bodyMinHeight } : undefined">
         <div v-for="(row, rowIndex) in rows" :key="rowIdentity(row, rowIndex)" class="history-table-v2-row" :style="{ gridTemplateColumns }">
           <div
             v-for="column in columns"
@@ -246,7 +262,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-else-if="!loading" class="history-table-v2-empty">
+      <div v-else-if="!loading" class="history-table-v2-empty" :style="bodyMinHeight ? { minHeight: bodyMinHeight } : undefined">
         <el-empty :description="emptyText" :image-size="92" />
       </div>
     </div>

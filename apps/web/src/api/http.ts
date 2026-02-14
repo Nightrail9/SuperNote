@@ -36,7 +36,9 @@ http.interceptors.response.use(
       code: serverError?.code ?? (htmlLikeResponse ? 'INVALID_API_BASE_URL' : 'UNKNOWN_ERROR'),
       message:
         serverError?.message ??
-        (htmlLikeResponse ? '接口返回了 HTML 页面，请检查 VITE_API_BASE_URL 或后端 /api 路由配置' : error.message ?? '请求失败'),
+        (htmlLikeResponse 
+        ? '接口返回了 HTML 页面。这通常意味着后端未启动或反向代理配置错误。\n1. 请确认后端服务正在运行 (默认端口 3001)。\n2. 当前 API 基础路径默认为 "/api"。\n3. 如需指定后端地址，请在 apps/web/.env 中配置 VITE_API_BASE_URL。' 
+        : error.message ?? '请求失败'),
       details: serverError?.details,
       requestId: serverError?.requestId,
     }

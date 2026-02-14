@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Link, Download, Microphone, MagicStick, Check, Loading } from '@element-plus/icons-vue'
+import { Link, Download, Microphone, MagicStick } from '@element-plus/icons-vue'
 import { api } from '../../api/modules'
 import PageBlock from '../../components/PageBlock.vue'
 import { buildMarkdownName, downloadMarkdownFile } from '../../utils/markdown'
@@ -20,10 +20,6 @@ const router = useRouter()
 const taskId = computed(() => String(route.params.taskId ?? ''))
 const taskMeta = computed(() => (taskId.value ? readTaskMeta(taskId.value) : undefined))
 const sourceUrlFirstValid = computed(() => taskMeta.value?.sourceUrlFirstValid)
-const sourceType = computed<'bilibili' | 'web'>(() => {
-  return taskMeta.value?.sourceType === 'web' ? 'web' : 'bilibili'
-})
-const createEntryPath = computed(() => (sourceType.value === 'web' ? '/create/web' : '/create/bilibili'))
 
 const noteTitle = ref(taskMeta.value?.noteTitle ?? '')
 const draftId = ref(taskMeta.value?.draftId)
@@ -36,6 +32,7 @@ const cancelLoading = ref(false)
 const retryLoading = ref(false)
 const autoSaving = ref(false)
 const autoSaveDone = ref(false)
+const previewOpen = ref(false)
 
 const task = ref<{
   status: string
@@ -106,27 +103,23 @@ const stageLabelMap: Record<string, string> = {
   extract_frames: '正在提取关键帧',
   local_transcribe: '正在本地转写视频',
   transcribe: '正在进行视频转录',
-  crawl: '正在抓取网页内容',
   merge: '正在整理转录结果',
   generate: '正在生成笔记内容',
   done: '生成完成',
   server: '服务处理异常',
 }
 
-const keyframeWarningCount = computed(() => task.value?.debug?.keyframeWarnings?.length ?? 0)
-
-const steps = [
-  { title: '解析', description: '解析视频/网页', icon: Link },
-  { title: '获取', description: '下载内容', icon: Download },
-  { title: '处理', description: '转录/提取', icon: Microphone },
-  { title: '生成', description: 'AI 整理', icon: MagicStick },
+const pipelineSteps = [
+  { key: 'parse', title: '解析', description: '提取视频信息', icon: Link },
+  { key: 'download', title: '获取', description: '下载与抽帧', icon: Download },
+  { key: 'transcribe', title: '处理', description: '转写与整理', icon: Microphone },
+  { key: 'generate', title: '生成', description: 'AI 输出笔记', icon: MagicStick },
 ]
 
 const currentStep = computed(() => {
   const s = (task.value?.stage ?? '').toLowerCase()
-  if (doneTaskStates.has(s)) return 4
+  if (doneTaskStates.has(s)) return 3
   if (failedTaskStates.has(s) || cancelledTaskStates.has(s)) return -1
-
   switch (s) {
     case 'pending':
     case 'validate':
@@ -134,7 +127,6 @@ const currentStep = computed(() => {
       return 0
     case 'download':
     case 'extract_frames':
-    case 'crawl':
       return 1
     case 'local_transcribe':
     case 'transcribe':
@@ -160,9 +152,18 @@ const progressStageLabel = computed(() => {
   return stageLabelMap[stage] ?? '正在处理任务'
 })
 
-const progressMessage = computed(() => {
-  return task.value?.message?.trim() || progressStageLabel.value
-})
+const progressMessage = computed(() => task.value?.message?.trim() || progressStageLabel.value)
+const keyframeWarningCount = computed(() => task.value?.debug?.keyframeWarnings?.length ?? 0)
+
+function resolveStepState(index: number) {
+  if (taskStatus.value === 'success') return 'done'
+  if (taskStatus.value !== 'generating') {
+    return index <= Math.max(0, currentStep.value) ? 'done' : 'todo'
+  }
+  if (index < currentStep.value) return 'done'
+  if (index === currentStep.value) return 'active'
+  return 'todo'
+}
 
 function resolveApiBaseUrl(): string {
   const raw = String(import.meta.env.VITE_API_BASE_URL ?? '').trim()
@@ -187,10 +188,10 @@ function resolveAbsoluteApiUrl(path: string): string {
 function syncActiveTaskStatus() {
   if (!taskId.value) return
   if (taskStatus.value === 'generating') {
-    setActiveTaskId(sourceType.value, taskId.value)
+    setActiveTaskId('bilibili', taskId.value)
     return
   }
-  setActiveTaskId(sourceType.value)
+  setActiveTaskId('bilibili')
 }
 
 async function fetchTask() {
@@ -384,6 +385,18 @@ function handleDownload() {
   downloadMarkdownFile(markdown.value, buildMarkdownName(finalTitle.value))
 }
 
+function openPreview() {
+  if (!canOperate.value) {
+    ElMessage.warning('任务完成后可预览')
+    return
+  }
+  previewOpen.value = true
+}
+
+function closePreview() {
+  previewOpen.value = false
+}
+
 onMounted(async () => {
   if (!taskId.value) return
   await fetchTask()
@@ -411,19 +424,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <PageBlock title="生成任务" description="查看任务进度，完成后下载并保存生成内容">
+  <PageBlock title="B站生成任务" description="查看 B站任务进度，完成后下载并保存生成内容">
     <template v-if="!taskId">
-      <el-button type="primary" @click="router.push(createEntryPath)">返回创作中心</el-button>
+      <el-button type="primary" @click="router.push('/create/bilibili')">返回创作中心</el-button>
     </template>
 
     <template v-else>
-      <div class="page-toolbar generate-task-toolbar">
+      <div class="task-header">
         <div class="task-meta-row">
-          <el-tag effect="dark" :type="statusTagType">{{ statusLabel }}</el-tag>
-          <el-text type="info">任务 ID：{{ taskId }}</el-text>
+          <el-tag v-if="taskStatus !== 'success'" effect="dark" :type="statusTagType">{{ statusLabel }}</el-tag>
         </div>
         <div class="page-toolbar toolbar-end">
-          <el-button v-if="taskStatus === 'success'" @click="handleDownload">下载 .md</el-button>
           <el-button v-if="canCancel" type="danger" :loading="cancelLoading" @click="handleCancelTask">取消任务</el-button>
           <el-button v-if="canRetry" type="primary" :loading="retryLoading" @click="handleRetryTask">重试生成</el-button>
         </div>
@@ -437,42 +448,26 @@ onBeforeUnmount(() => {
         :closable="false"
         show-icon
       />
-      <el-alert
-        v-else-if="taskStatus === 'cancelled'"
-        title="任务已取消"
-        type="warning"
-        :closable="false"
-        show-icon
-      />
+      <el-alert v-else-if="taskStatus === 'cancelled'" title="任务已取消" type="warning" :closable="false" show-icon />
       <el-alert v-else-if="taskStatus === 'failed'" :title="taskError" type="error" :closable="false" show-icon />
 
-      <el-space v-if="taskStatus === 'generating' && (polling || loading)">
-        <el-text type="info">正在获取最新任务状态...</el-text>
-      </el-space>
-
-      <div v-if="taskStatus === 'generating'" class="task-progress-panel">
-        <el-steps :active="currentStep" finish-status="success" align-center style="margin-bottom: var(--space-8)">
-          <el-step v-for="(step, index) in steps" :key="index" :title="step.title" :description="step.description">
-            <template #icon>
-              <el-icon v-if="index === currentStep" class="is-loading"><Loading /></el-icon>
-              <component :is="step.icon" v-else />
-            </template>
-          </el-step>
-        </el-steps>
-
-        <div class="progress-info-row" style="display: flex; justify-content: space-between; margin-bottom: var(--space-2)">
-           <el-text type="info" size="small">{{ progressMessage }}</el-text>
-           <el-text type="primary" size="small" style="font-family: monospace">{{ progressValue }}%</el-text>
+      <el-card v-if="taskStatus === 'generating'" shadow="never" class="progress-card">
+        <div class="progress-top">
+          <el-text tag="strong">B站视频处理流程</el-text>
+          <el-text type="info">{{ progressValue }}%</el-text>
         </div>
-        <el-progress 
-          :percentage="progressValue" 
-          :stroke-width="12" 
-          :show-text="false" 
-          striped 
-          striped-flow 
-          :duration="10"
-        />
-      </div>
+        <el-progress :percentage="progressValue" :stroke-width="10" status="" />
+        <div class="bili-stage-grid">
+          <div v-for="(step, index) in pipelineSteps" :key="step.key" class="bili-stage-item" :class="`is-${resolveStepState(index)}`">
+            <el-icon class="stage-icon"><component :is="step.icon" /></el-icon>
+            <div class="stage-copy">
+              <span class="stage-title">{{ step.title }}</span>
+              <span class="stage-desc">{{ step.description }}</span>
+            </div>
+          </div>
+        </div>
+        <el-text type="info">{{ progressMessage }}</el-text>
+      </el-card>
 
       <template v-if="canOperate">
         <el-alert
@@ -481,53 +476,172 @@ onBeforeUnmount(() => {
           :closable="false"
           :title="`关键帧阶段出现 ${keyframeWarningCount} 条降级告警，已自动回退并继续生成`"
         />
-        <el-alert
-          v-if="shouldAutoSaveDraft"
-          type="info"
-          :closable="false"
-          title="若未手动保存，离开或刷新页面时将自动保存为草稿"
-        />
-        <div class="md-preview">
-          <MarkdownPreview :source="markdown" />
-        </div>
 
-        <el-space direction="vertical" class="full-width-stack">
-          <el-input v-model="noteTitle" placeholder="笔记标题（可选，不填将从 Markdown 自动提取）" />
+        <el-card shadow="never" class="result-complete-card">
+          <div class="result-complete-main">
+            <el-text tag="strong" size="large">任务已完成</el-text>
+            <el-text type="info">生成内容已就绪，可在下方操作区点击预览查看。</el-text>
+          </div>
+        </el-card>
+
+        <div class="result-action-panel">
+          <el-input v-model="noteTitle" class="result-title-input" placeholder="笔记标题（可选，不填将从 Markdown 自动提取）" />
+          <div class="page-toolbar toolbar-end result-action-row">
+            <el-button @click="openPreview">预览</el-button>
+            <el-button @click="handleDownload">下载 .md</el-button>
+            <el-button :loading="saveDraftLoading" @click="saveDraft">保存为草稿</el-button>
+            <el-button type="primary" :loading="saveNoteLoading" :disabled="!sourceUrlFirstValid" @click="saveNote">保存为笔记</el-button>
+          </div>
           <el-alert
             v-if="!sourceUrlFirstValid"
             type="warning"
             :closable="false"
             title="缺少源链接，无法保存为笔记，请回到创作中心重新发起任务"
           />
-          <div class="page-toolbar toolbar-end">
-            <el-button :loading="saveDraftLoading" @click="saveDraft">保存为草稿</el-button>
-            <el-button type="primary" :loading="saveNoteLoading" :disabled="!sourceUrlFirstValid" @click="saveNote">
-              保存为笔记
-            </el-button>
-          </div>
-        </el-space>
+        </div>
+
+        <el-dialog
+          v-model="previewOpen"
+          title="生成结果预览"
+          width="72%"
+          align-center
+          append-to-body
+          class="history-preview-dialog task-preview-dialog"
+          :z-index="3000"
+          :close-on-click-modal="false"
+          @closed="closePreview"
+        >
+          <el-card shadow="never" class="history-preview-card task-preview-card">
+            <div class="history-preview-body">
+              <MarkdownPreview v-if="previewOpen" :source="markdown" />
+            </div>
+          </el-card>
+        </el-dialog>
       </template>
     </template>
   </PageBlock>
 </template>
 
 <style scoped>
-.generate-task-toolbar {
-  position: static;
+.task-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
-.task-progress-panel {
-  background: var(--bg-surface);
+.progress-card {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(234, 88, 12, 0.2);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 247, 237, 0.92) 100%);
+}
+
+.progress-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.bili-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-3);
+}
+
+.bili-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.75);
+  padding: 10px;
+}
+
+.bili-stage-item.is-active {
+  border-color: rgba(234, 88, 12, 0.5);
+  box-shadow: 0 8px 18px -14px rgba(234, 88, 12, 0.7);
+}
+
+.bili-stage-item.is-done {
+  border-color: rgba(22, 163, 74, 0.4);
+}
+
+.stage-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #c2410c;
+  background: rgba(251, 146, 60, 0.2);
+}
+
+.stage-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.stage-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stage-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.result-action-panel {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: var(--space-6);
-  margin-top: var(--space-4);
-  box-shadow: var(--shadow-sm);
-  animation: fadeIn 0.5s ease-out;
+  background: var(--bg-surface);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+.result-complete-card {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(234, 88, 12, 0.3);
+  background: linear-gradient(135deg, rgba(255, 247, 237, 0.9) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.result-complete-main {
+  display: grid;
+  gap: 6px;
+}
+
+.history-preview-card {
+  border-radius: 12px;
+}
+
+.history-preview-body {
+  min-height: 460px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.result-title-input {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .bili-stage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .result-action-panel {
+    padding: var(--space-3);
+  }
+
+  .result-action-row {
+    justify-content: flex-start;
+  }
 }
 </style>

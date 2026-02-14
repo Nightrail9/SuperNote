@@ -14,6 +14,7 @@ import {
   createSummaryPipeline,
   type SummaryPipeline,
 } from '../services/summary-pipeline.js';
+import { BILIBILI_URL_PATTERN } from '../constants/index.js';
 
 /**
  * Request body interface for POST /api/summarize
@@ -81,8 +82,6 @@ export type SummarizeResponse = SummarizeSuccessResponse | SummarizeErrorRespons
  *
  * Requirements: 1.3, 2.3
  */
-const BILIBILI_URL_PATTERN =
-  /^https?:\/\/(?:(?:www\.|m\.)?bilibili\.com\/video\/(?:BV[a-zA-Z0-9]+|av\d+)|b23\.tv\/[a-zA-Z0-9]+)/i;
 
 /**
  * Validate the summarize request body.

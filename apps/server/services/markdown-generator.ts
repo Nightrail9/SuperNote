@@ -4,6 +4,8 @@
  * 负责拉取 PPT 提取结果并格式化为 Markdown 文本。
  */
 
+import { sleep } from '../utils/retry.js';
+
 /** PPT 页信息 */
 export interface PPTFrame {
   /** PPT 图片地址 */
@@ -61,7 +63,7 @@ export class MarkdownGeneratorImpl implements MarkdownGenerator {
       try {
         if (attempt > 0) {
           // 指数退避：1s、2s、4s
-          await this.sleep(this.retryDelayMs * Math.pow(2, attempt - 1));
+          await sleep(this.retryDelayMs * Math.pow(2, attempt - 1));
         }
 
         const response = await this.fetchFn(pptUrl);
@@ -217,10 +219,6 @@ export class MarkdownGeneratorImpl implements MarkdownGenerator {
     );
   }
 
-  /** 休眠指定毫秒 */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 }
 
 /** 创建 Markdown 生成器 */

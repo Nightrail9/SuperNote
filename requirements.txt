@@ -1,2 +1,1 @@
-openai-whisper
-# torch (For CUDA support, see INSTALL.md for custom installation command)
+faster-whisper

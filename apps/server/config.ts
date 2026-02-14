@@ -22,7 +22,7 @@ export interface ServerConfig {
  * Default configuration values
  */
 export const DEFAULT_CONFIG: Readonly<Omit<ServerConfig, 'sessdata'>> = {
-  port: 3000,
+  port: 3001,
   corsOrigin: '*',
 };
 

@@ -27,3 +27,12 @@ export function toErrorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+/**
+ * Extract error message from unknown error value
+ * @param error - The error value to extract message from
+ * @returns The error message string
+ */
+export function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

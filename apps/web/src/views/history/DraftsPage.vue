@@ -9,13 +9,14 @@ import HistoryResizableTable from '../../components/history/HistoryResizableTabl
 import type { Draft } from '../../types/domain'
 import { formatDateTime } from '../../utils/datetime'
 import { buildPageKeywordQuery, resolveRowIndexById } from '../../utils/list'
+import { DRAFT_TABLE_COLUMNS, HISTORY_FIXED_BODY_ROWS, HISTORY_PAGE_SIZE, resolveSourceLabel } from './table-config'
 
 const MarkdownPreview = defineAsyncComponent(() => import('../../components/markdown/MarkdownPreview.vue'))
 const MarkdownEditor = defineAsyncComponent(() => import('../../components/markdown/MarkdownEditor.vue'))
 
 const route = useRoute()
 const router = useRouter()
-const FIXED_PAGE_SIZE = 10
+const FIXED_PAGE_SIZE = HISTORY_PAGE_SIZE
 
 const loading = ref(false)
 const items = ref<Draft[]>([])
@@ -46,12 +47,7 @@ const page = computed(() => {
 const pageSize = computed(() => FIXED_PAGE_SIZE)
 const keyword = computed(() => (typeof route.query.keyword === 'string' ? route.query.keyword : ''))
 
-const tableColumns = [
-  { key: 'title', label: '草稿标题', minWidth: 260, flex: 2.2 },
-  { key: 'lastAutoSavedAt', label: '最后自动保存', minWidth: 180, flex: 1.35 },
-  { key: 'updatedAt', label: '更新时间', minWidth: 180, flex: 1.35 },
-  { key: 'actions', label: '操作', minWidth: 220, flex: 1.45, freeze: 'right' as const, align: 'center' as const },
-]
+const tableColumns = DRAFT_TABLE_COLUMNS
 
 const filteredItems = computed(() => {
   const needle = keyword.value.trim().toLowerCase()
@@ -234,7 +230,13 @@ onMounted(() => {
     </div>
 
     <div class="history-table-wrap">
-      <HistoryResizableTable :rows="filteredItems" :columns="tableColumns" :loading="loading" empty-text="暂无草稿记录">
+      <HistoryResizableTable
+        :rows="filteredItems"
+        :columns="tableColumns"
+        :loading="loading"
+        :fixed-body-rows="HISTORY_FIXED_BODY_ROWS"
+        empty-text="暂无草稿记录"
+      >
         <template #cell-title="{ row }">
           <el-text>{{ row.title || '未命名草稿' }}</el-text>
         </template>
@@ -273,19 +275,22 @@ onMounted(() => {
       append-to-body
       class="history-preview-dialog"
       :z-index="3000"
+      :close-on-click-modal="false"
       @closed="closePreview"
     >
-      <div class="history-preview-toolbar">
-        <el-text type="info" class="history-preview-counter">第 {{ activePreviewIndex + 1 }} / {{ filteredItems.length }} 条</el-text>
-        <div class="history-preview-nav">
-          <el-button :disabled="!canPreviewPrev || previewLoading" @click="previewPrev">上一条</el-button>
-          <el-button type="primary" :disabled="!canPreviewNext || previewLoading" @click="previewNext">下一条</el-button>
+      <el-card shadow="never" class="history-preview-card">
+        <div class="history-preview-toolbar">
+          <el-text type="info" class="history-preview-counter">第 {{ activePreviewIndex + 1 }} / {{ filteredItems.length }} 条</el-text>
+          <div class="history-preview-nav">
+            <el-button :disabled="!canPreviewPrev || previewLoading" @click="previewPrev">上一条</el-button>
+            <el-button type="primary" :disabled="!canPreviewNext || previewLoading" @click="previewNext">下一条</el-button>
+          </div>
         </div>
-      </div>
-      <el-text type="info" class="history-preview-source">源链接：{{ activeDraft?.sourceUrl || '无' }}</el-text>
-      <div v-loading="previewLoading" class="history-preview-body">
-        <MarkdownPreview v-if="previewOpen || previewLoading" :source="activeDraft?.contentMd || ''" />
-      </div>
+        <el-text type="info" class="history-preview-source">来源：{{ resolveSourceLabel(activeDraft?.sourceUrl || '') }}</el-text>
+        <div v-loading="previewLoading" class="history-preview-body">
+          <MarkdownPreview v-if="previewOpen || previewLoading" :source="activeDraft?.contentMd || ''" />
+        </div>
+      </el-card>
     </el-dialog>
 
     <el-dialog
@@ -317,3 +322,34 @@ onMounted(() => {
     </el-dialog>
   </PageBlock>
 </template>
+
+<style scoped>
+.history-preview-card {
+  border-radius: 12px;
+}
+
+.history-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.history-preview-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.history-preview-source {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.history-preview-body {
+  min-height: 460px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+</style>

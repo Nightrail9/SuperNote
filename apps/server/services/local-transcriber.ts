@@ -3,6 +3,9 @@ import * as path from 'path';
 import { promisify } from 'util';
 import { execFile } from 'child_process';
 import { createId, type LocalTranscriberConfigRecord } from './app-data-store.js';
+import { getErrorMessage } from '../utils/http-error.js';
+import { resolveCommand, getProjectRoot } from '../utils/path-resolver.js';
+import { resolveFfmpegBin, resolveFfprobeBin } from '../utils/ffmpeg-resolver.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -82,7 +85,7 @@ export class WhisperCliTranscriber implements LocalTranscriber {
     config: LocalTranscriberConfigRecord,
     signal?: AbortSignal,
   ): Promise<void> {
-    const ffmpegBin = config.ffmpegBin?.trim() || process.env.FFMPEG_BIN || 'ffmpeg';
+    const ffmpegBin = resolveFfmpegBin(config.ffmpegBin);
     try {
       await execFileAsync(ffmpegBin, [
         '-hide_banner',
@@ -101,7 +104,7 @@ export class WhisperCliTranscriber implements LocalTranscriber {
         audioPath,
       ], { signal });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       if (/enoent/i.test(message)) {
         throw new Error('未找到 ffmpeg。请安装 ffmpeg 并加入 PATH，或在本地转写配置中填写 ffmpeg 可执行路径');
       }
@@ -115,59 +118,67 @@ export class WhisperCliTranscriber implements LocalTranscriber {
     config: LocalTranscriberConfigRecord,
     signal?: AbortSignal,
   ): Promise<string> {
-    const ffmpegBin = config.ffmpegBin?.trim() || process.env.FFMPEG_BIN || 'ffmpeg';
+    const ffmpegBin = resolveFfmpegBin(config.ffmpegBin);
     const ffmpegDir = path.dirname(ffmpegBin);
     const mergedPath = ffmpegDir
       ? `${ffmpegDir}${path.delimiter}${process.env.PATH ?? ''}`
       : process.env.PATH;
 
+    const scriptPath = path.join(getProjectRoot(), 'apps', 'server', 'scripts', 'transcribe_faster_whisper.py');
+    
+    // Determine python command. 
+    // If config.command looks like a python executable (contains 'python'), use it.
+    // Otherwise (e.g. if it is 'whisper' from old config), fall back to 'python'.
+    let pythonBin = 'python';
+    if (config.command && config.command.toLowerCase().includes('python')) {
+      pythonBin = resolveCommand(config.command);
+    }
+    
     const args = [
+      scriptPath,
       audioPath,
       '--model',
       config.model,
-      '--output_format',
-      'json',
       '--output_dir',
       outputDir,
-      '--task',
-      'transcribe',
-      '--fp16',
-      'False',
       '--temperature',
       String(config.temperature),
       '--beam_size',
       String(config.beamSize),
-      '--verbose',
-      'False',
+      // '--verbose' // optional
     ];
+
     if (config.language) {
       args.push('--language', config.language);
     }
     if (config.device && config.device !== 'auto') {
       args.push('--device', config.device);
     }
+    // fast-whisper compute_type default is usually good, but could be exposed in config if needed.
+    // For now we rely on script default or 'default'.
 
     const effectiveTimeoutMs = await this.resolveAdaptiveTimeoutMs(audioPath, config, ffmpegBin);
-
+    
     let whisperStdout = '';
     let whisperStderr = '';
     try {
-      const result = await execFileAsync(config.command, args, {
+      const result = await execFileAsync(pythonBin, args, {
         timeout: effectiveTimeoutMs,
         maxBuffer: 1024 * 1024 * 16,
         signal,
         env: {
           ...process.env,
           KMP_DUPLICATE_LIB_OK: process.env.KMP_DUPLICATE_LIB_OK || 'TRUE',
+          PYTHONIOENCODING: 'utf-8',
           PATH: mergedPath,
         },
       });
       whisperStdout = result.stdout;
       whisperStderr = result.stderr;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       if (/enoent/i.test(message)) {
-        throw new Error(`未找到本地转写命令 ${config.command}。请安装 whisper 并确保命令可执行`);
+        throw new Error(`未找到 Python 环境或脚本。请确保已安装 Python 并安装了 faster-whisper`);
       }
       if (/timed out|timeout/i.test(message)) {
         throw new Error(
@@ -177,6 +188,13 @@ export class WhisperCliTranscriber implements LocalTranscriber {
       throw error;
     }
 
+    // script prints the json path to stdout
+    const jsonPathFromStdout = whisperStdout.trim().split('\n').pop()?.trim();
+    if (jsonPathFromStdout && fs.existsSync(jsonPathFromStdout)) {
+        return jsonPathFromStdout;
+    }
+
+    // Fallback: check expected file locations if stdout parsing failed
     const expected = [
       path.join(outputDir, `${path.parse(audioPath).name}.json`),
       path.join(outputDir, `${path.basename(audioPath)}.json`),
@@ -198,13 +216,7 @@ export class WhisperCliTranscriber implements LocalTranscriber {
     }
 
     const detail = [whisperStdout, whisperStderr].filter(Boolean).join('\n').trim();
-    if (/Skipping\s+.+\s+FileNotFoundError|No such file or directory/i.test(detail)) {
-      throw new Error(
-        'whisper 未找到 ffmpeg。请将 ffmpeg 路径配置为有效可执行文件，或将其所在目录加入 PATH',
-      );
-    }
-
-    throw new Error(`whisper output not found: ${expected[0]}${detail ? `\n${detail.slice(0, 600)}` : ''}`);
+    throw new Error(`faster-whisper output not found. stderr: \n${detail.slice(0, 1000)}`);
   }
 
   private async resolveAdaptiveTimeoutMs(
@@ -213,9 +225,9 @@ export class WhisperCliTranscriber implements LocalTranscriber {
     ffmpegBin: string,
   ): Promise<number> {
     const baseTimeoutMs = Math.max(30000, config.timeoutMs || 600000);
-    const ffprobeBin = path.join(path.dirname(ffmpegBin), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+    const ffprobeBin = resolveFfprobeBin(config.ffmpegBin);
 
-    if (!fs.existsSync(ffprobeBin)) {
+    if (!fs.existsSync(ffprobeBin) && ffprobeBin !== 'ffprobe') {
       return baseTimeoutMs;
     }
 

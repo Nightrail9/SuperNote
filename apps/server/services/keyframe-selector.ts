@@ -3,6 +3,8 @@ import * as path from 'path';
 import { promisify } from 'util';
 import { execFile } from 'child_process';
 import { createId, type VideoUnderstandingConfigRecord } from './app-data-store.js';
+import { resolveFfmpegBin, resolveFfprobeBin } from '../utils/ffmpeg-resolver.js';
+import { getErrorMessage } from '../utils/http-error.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -125,12 +127,8 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
   private ffprobeBin: string;
 
   constructor(options?: { ffmpegBin?: string; ffprobeBin?: string }) {
-    const bundledFfmpeg = path.resolve('tools', 'ffmpeg', 'bin', 'ffmpeg.exe');
-    const bundledFfprobe = path.resolve('tools', 'ffmpeg', 'bin', 'ffprobe.exe');
-    this.ffmpegBin =
-      options?.ffmpegBin ?? process.env.FFMPEG_BIN ?? (fs.existsSync(bundledFfmpeg) ? bundledFfmpeg : 'ffmpeg');
-    this.ffprobeBin =
-      options?.ffprobeBin ?? process.env.FFPROBE_BIN ?? (fs.existsSync(bundledFfprobe) ? bundledFfprobe : 'ffprobe');
+    this.ffmpegBin = resolveFfmpegBin(options?.ffmpegBin);
+    this.ffprobeBin = resolveFfprobeBin(options?.ffprobeBin);
   }
 
   async select(
@@ -196,7 +194,7 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
         },
       };
     } catch (error) {
-      warnings.push(`KEYFRAME_WARN_PIPELINE_FAILED:${error instanceof Error ? error.message : String(error)}`);
+      warnings.push(`KEYFRAME_WARN_PIPELINE_FAILED:${getErrorMessage(error)}`);
       return {
         success: false,
         frames: [],

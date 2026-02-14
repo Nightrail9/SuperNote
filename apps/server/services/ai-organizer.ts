@@ -54,6 +54,7 @@ export interface AIOrganizer {
 
 /** Default timeout for AI API requests: 60 seconds */
 const DEFAULT_TIMEOUT_MS = 60000;
+const MAX_TIMEOUT_RETRIES = 1;
 
 const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   gemini: 'gemini-2.5-flash',
@@ -250,144 +251,173 @@ export class DefaultAIOrganizer implements AIOrganizer {
     const modelName = resolveModelName(provider, config.modelName);
     const startedAt = Date.now();
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    const externalAbort = () => controller.abort();
-    if (config.abortSignal) {
-      if (config.abortSignal.aborted) {
-        controller.abort();
-      } else {
-        config.abortSignal.addEventListener('abort', externalAbort, { once: true });
-      }
+    const useGeminiNative = provider === 'gemini' && isGeminiNativeUrl(config.apiUrl);
+    const requestUrl = useGeminiNative
+      ? buildGeminiNativeEndpoint(config.apiUrl, modelName)
+      : buildOpenAIChatEndpoint(config.apiUrl);
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (useGeminiNative) {
+      headers['x-goog-api-key'] = config.apiKey;
+    } else {
+      headers.Authorization = `Bearer ${config.apiKey}`;
     }
 
-    try {
-      const useGeminiNative = provider === 'gemini' && isGeminiNativeUrl(config.apiUrl);
-      const requestUrl = useGeminiNative
-        ? buildGeminiNativeEndpoint(config.apiUrl, modelName)
-        : buildOpenAIChatEndpoint(config.apiUrl);
-      logDiagnostic('info', 'ai-organizer', 'request_started', {
-        provider,
-        modelName,
-        timeoutMs,
-        requestUrl,
-        markdownLength: markdown.length,
-      });
+    const payload = useGeminiNative
+      ? buildGeminiNativePayload(markdown, config)
+      : buildOpenAIPayload(markdown, config, modelName);
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
+    const maxAttempts = 1 + MAX_TIMEOUT_RETRIES;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      const externalAbort = () => controller.abort();
 
-      if (useGeminiNative) {
-        headers['x-goog-api-key'] = config.apiKey;
-      } else {
-        headers.Authorization = `Bearer ${config.apiKey}`;
+      if (config.abortSignal) {
+        if (config.abortSignal.aborted) {
+          controller.abort();
+        } else {
+          config.abortSignal.addEventListener('abort', externalAbort, { once: true });
+        }
       }
 
-      const payload = useGeminiNative
-        ? buildGeminiNativePayload(markdown, config)
-        : buildOpenAIPayload(markdown, config, modelName);
-
-      const response = await fetch(requestUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      const rawBody = await response.text();
-      const parsedBody = this.tryParseJson(rawBody);
-
-      // Handle non-OK responses — Requirements: 4.3, 4.4
-      if (!response.ok) {
-        const errorCode = mapHttpStatusToErrorCode(response.status);
-        const fallbackMessage = getErrorMessage(errorCode).message;
-        const errorMessage = this.resolveApiErrorMessage(parsedBody, fallbackMessage);
-        logDiagnostic('warn', 'ai-organizer', 'request_failed_http', {
+      try {
+        logDiagnostic('info', 'ai-organizer', 'request_started', {
           provider,
           modelName,
           timeoutMs,
           requestUrl,
-          httpStatus: response.status,
-          elapsedMs: Date.now() - startedAt,
-          errorCode,
-          errorMessage,
+          markdownLength: markdown.length,
+          attempt,
+          maxAttempts,
         });
+
+        const response = await fetch(requestUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        const rawBody = await response.text();
+        const parsedBody = this.tryParseJson(rawBody);
+
+        if (!response.ok) {
+          const errorCode = mapHttpStatusToErrorCode(response.status);
+          const fallbackMessage = getErrorMessage(errorCode).message;
+          const errorMessage = this.resolveApiErrorMessage(parsedBody, fallbackMessage);
+          logDiagnostic('warn', 'ai-organizer', 'request_failed_http', {
+            provider,
+            modelName,
+            timeoutMs,
+            requestUrl,
+            httpStatus: response.status,
+            elapsedMs: Date.now() - startedAt,
+            errorCode,
+            errorMessage,
+            attempt,
+            maxAttempts,
+          });
+          return {
+            success: false,
+            error: {
+              code: errorCode,
+              message: errorMessage,
+            },
+          };
+        }
+
+        if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+          const htmlLike = /^\s*<!doctype\s+html/i.test(rawBody);
+          return {
+            success: false,
+            error: {
+              code: 'API_ERROR',
+              message: htmlLike
+                ? '模型接口返回了 HTML 页面，请检查 Base URL 是否为 API 地址（而非网页地址）'
+                : '模型接口返回了非 JSON 响应，请检查 Base URL 与接口格式',
+            },
+          };
+        }
+
+        const body = parsedBody as Record<string, unknown>;
+        const content = extractContent(body);
+
         return {
-          success: false,
-          error: {
-            code: errorCode,
-            message: errorMessage,
-          },
+          success: true,
+          content,
         };
-      }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          const externalAborted = Boolean(config.abortSignal?.aborted);
+          const canRetry = !externalAborted && attempt < maxAttempts;
 
-      // Parse successful response — Requirements: 4.1, 4.2
-      if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
-        const htmlLike = /^\s*<!doctype\s+html/i.test(rawBody);
-        return {
-          success: false,
-          error: {
-            code: 'API_ERROR',
-            message: htmlLike
-              ? '模型接口返回了 HTML 页面，请检查 Base URL 是否为 API 地址（而非网页地址）'
-              : '模型接口返回了非 JSON 响应，请检查 Base URL 与接口格式',
-          },
-        };
-      }
+          if (canRetry) {
+            logDiagnostic('warn', 'ai-organizer', 'request_timeout_retry', {
+              provider,
+              modelName,
+              timeoutMs,
+              elapsedMs: Date.now() - startedAt,
+              attempt,
+              maxAttempts,
+            });
+            continue;
+          }
 
-      const body = parsedBody as Record<string, unknown>;
-      const content = extractContent(body);
+          const errorMessage = getErrorMessage('CONNECTION_TIMEOUT').message;
+          logDiagnostic('warn', 'ai-organizer', 'request_timeout', {
+            provider,
+            modelName,
+            timeoutMs,
+            elapsedMs: Date.now() - startedAt,
+            attempt,
+            maxAttempts,
+          });
+          return {
+            success: false,
+            error: {
+              code: 'CONNECTION_TIMEOUT',
+              message: errorMessage,
+            },
+          };
+        }
 
-      return {
-        success: true,
-        content,
-      };
-    } catch (err: unknown) {
-      clearTimeout(timeoutId);
-
-      // Handle abort / timeout — Requirements: 4.5
-      if (err instanceof Error && err.name === 'AbortError') {
-        const errorMessage = getErrorMessage('CONNECTION_TIMEOUT').message;
-        logDiagnostic('warn', 'ai-organizer', 'request_timeout', {
+        const errorMessage = err instanceof Error
+          ? err.message
+          : getErrorMessage('CONNECTION_ERROR').message;
+        logDiagnosticError('ai-organizer', 'request_failed_network', err, {
           provider,
           modelName,
           timeoutMs,
           elapsedMs: Date.now() - startedAt,
+          attempt,
+          maxAttempts,
         });
         return {
           success: false,
           error: {
-            code: 'CONNECTION_TIMEOUT',
+            code: 'CONNECTION_ERROR',
             message: errorMessage,
           },
         };
-      }
-
-      // Handle network / connection errors — Requirements: 4.6
-      const errorMessage = err instanceof Error
-        ? err.message
-        : getErrorMessage('CONNECTION_ERROR').message;
-      logDiagnosticError('ai-organizer', 'request_failed_network', err, {
-        provider,
-        modelName,
-        timeoutMs,
-        elapsedMs: Date.now() - startedAt,
-      });
-      return {
-        success: false,
-        error: {
-          code: 'CONNECTION_ERROR',
-          message: errorMessage,
-        },
-      };
-    } finally {
-      if (config.abortSignal) {
-        config.abortSignal.removeEventListener('abort', externalAbort);
+      } finally {
+        clearTimeout(timeoutId);
+        if (config.abortSignal) {
+          config.abortSignal.removeEventListener('abort', externalAbort);
+        }
       }
     }
+
+    return {
+      success: false,
+      error: {
+        code: 'CONNECTION_TIMEOUT',
+        message: getErrorMessage('CONNECTION_TIMEOUT').message,
+      },
+    };
   }
 
   private tryParseJson(raw: string): unknown {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { InfoFilled } from '@element-plus/icons-vue'
 import PageBlock from '../../components/PageBlock.vue'
 import { api } from '../../api/modules'
 import type { IntegrationConfig, LocalTranscriberConfig, VideoUnderstandingConfig, VideoUnderstandingPreset } from '../../types/domain'
@@ -8,16 +9,19 @@ import type { IntegrationConfig, LocalTranscriberConfig, VideoUnderstandingConfi
 const loading = ref(false)
 const savingJina = ref(false)
 const testingJina = ref(false)
-const savingLocal = ref(false)
 const testingLocal = ref(false)
+const savingLocal = ref(false)
 const checkingEnv = ref(false)
 const envResults = ref<{
   ffmpeg: { ok: boolean; version: string; path: string }
   cuda: { ok: boolean; details: string }
   whisper: { ok: boolean; version: string; path: string }
 } | null>(null)
-const savingVideo = ref(false)
-const activePresetId = ref('')
+const activePresetId = ref('medium_balanced')
+
+const MODEL_OPTIONS = ['tiny', 'base', 'small', 'medium', 'large-v3'] as const
+const LANGUAGE_OPTIONS = ['zh', 'en', 'auto'] as const
+const PRESET_ORDER = ['short_dense', 'medium_balanced', 'long_efficient'] as const
 
 const integrations = reactive<IntegrationConfig>({
   jinaReader: {
@@ -30,7 +34,7 @@ const integrations = reactive<IntegrationConfig>({
 
 const localTranscriber = reactive<LocalTranscriberConfig>({
   engine: 'whisper_cli',
-  command: 'whisper',
+  command: 'python',
   ffmpegBin: 'tools/ffmpeg/bin/ffmpeg.exe',
   model: 'small',
   language: 'zh',
@@ -54,6 +58,34 @@ const videoForm = reactive<VideoUnderstandingConfig>({
 })
 
 const videoPresets = ref<VideoUnderstandingPreset[]>([])
+
+const visibleVideoPresets = computed(() => {
+  return PRESET_ORDER
+    .map((id) => videoPresets.value.find((preset) => preset.id === id))
+    .filter((preset): preset is VideoUnderstandingPreset => Boolean(preset))
+})
+
+function normalizeLocalTranscriberSelections() {
+  if (!MODEL_OPTIONS.includes(localTranscriber.model as (typeof MODEL_OPTIONS)[number])) {
+    localTranscriber.model = 'small'
+  }
+  if (!LANGUAGE_OPTIONS.includes(localTranscriber.language as (typeof LANGUAGE_OPTIONS)[number])) {
+    localTranscriber.language = 'zh'
+  }
+}
+
+function getLocalTranscriberEditablePayload() {
+  return {
+    model: localTranscriber.model,
+    language: localTranscriber.language,
+    device: localTranscriber.device,
+    beamSize: localTranscriber.beamSize,
+    temperature: localTranscriber.temperature,
+    timeoutMs: localTranscriber.timeoutMs,
+  }
+}
+
+
 
 const videoQualityLabel = computed(() => {
   if (!videoForm.enabled) return '已关闭'
@@ -82,8 +114,22 @@ async function loadAll() {
       Object.assign(integrations.jinaReader, integrationsResp.data.jinaReader)
     }
     Object.assign(localTranscriber, localResp.data)
+    normalizeLocalTranscriberSelections()
     Object.assign(videoForm, videoResp.data)
     videoPresets.value = Array.isArray(presetResp.data?.items) ? presetResp.data.items : []
+
+    // Check for matching preset
+    const match = videoPresets.value.find(preset => {
+      return Object.entries(preset.config).every(([k, v]) => {
+        // @ts-ignore
+        return videoForm[k] === v
+      })
+    })
+    if (match) {
+      activePresetId.value = match.id
+    } else {
+      activePresetId.value = ''
+    }
   } catch (error) {
     ElMessage.error((error as { message?: string }).message ?? '加载配置失败')
   } finally {
@@ -115,27 +161,27 @@ async function testJina() {
   }
 }
 
-async function saveLocalTranscriber() {
-  savingLocal.value = true
-  try {
-    await api.updateLocalTranscriber(localTranscriber)
-    ElMessage.success('本地转写配置已保存')
-  } catch (error) {
-    ElMessage.error((error as { message?: string }).message ?? '保存本地转写配置失败')
-  } finally {
-    savingLocal.value = false
-  }
-}
-
 async function testLocalTranscriber() {
   testingLocal.value = true
   try {
-    const response = await api.testLocalTranscriber(localTranscriber)
+    const response = await api.testLocalTranscriber(getLocalTranscriberEditablePayload())
     response.data.ok ? ElMessage.success(response.data.message) : ElMessage.error(response.data.message)
   } catch (error) {
     ElMessage.error((error as { message?: string }).message ?? '本地转写测试失败')
   } finally {
     testingLocal.value = false
+  }
+}
+
+async function saveLocalTranscriber() {
+  savingLocal.value = true
+  try {
+    const response = await api.updateLocalTranscriber(getLocalTranscriberEditablePayload())
+    ElMessage.success(response.data.message ?? '本地转写配置已保存')
+  } catch (error) {
+    ElMessage.error((error as { message?: string }).message ?? '保存本地转写配置失败')
+  } finally {
+    savingLocal.value = false
   }
 }
 
@@ -156,18 +202,6 @@ async function checkEnv() {
   }
 }
 
-async function saveVideoUnderstanding() {
-  savingVideo.value = true
-  try {
-    await api.updateVideoUnderstanding(videoForm)
-    ElMessage.success('关键帧参数已保存')
-  } catch (error) {
-    ElMessage.error((error as { message?: string }).message ?? '保存关键帧参数失败')
-  } finally {
-    savingVideo.value = false
-  }
-}
-
 onMounted(() => {
   void loadAll()
 })
@@ -183,8 +217,8 @@ onMounted(() => {
         </div>
         <div class="hero-metrics">
           <div class="metric-chip">
-            <span class="metric-label">转写引擎</span>
-            <span class="metric-value">{{ localTranscriber.command }}</span>
+            <span class="metric-label">转写模型</span>
+            <span class="metric-value">{{ localTranscriber.model }}</span>
           </div>
           <div class="metric-chip">
             <span class="metric-label">关键帧模式</span>
@@ -237,22 +271,26 @@ onMounted(() => {
           </div>
           <span class="card-badge">Local ASR</span>
         </div>
+
+        <div class="env-info-banner">
+          <el-icon><InfoFilled /></el-icon>
+          <span>仅在点击“保存配置”后，才会写入项目根目录 <code>.env</code> 文件并立即生效</span>
+        </div>
+
         <div class="form-grid three-col">
           <div class="field-item">
-            <label>命令</label>
-            <input v-model="localTranscriber.command" class="form-input" placeholder="whisper" />
-          </div>
-          <div class="field-item">
-            <label>ffmpeg 路径</label>
-            <input v-model="localTranscriber.ffmpegBin" class="form-input" placeholder="tools/ffmpeg/bin/ffmpeg.exe" />
-          </div>
-          <div class="field-item">
             <label>模型</label>
-            <input v-model="localTranscriber.model" class="form-input" placeholder="small" />
+            <el-select v-model="localTranscriber.model" style="width: 100%">
+              <el-option v-for="model in MODEL_OPTIONS" :key="model" :label="model" :value="model" />
+            </el-select>
           </div>
           <div class="field-item">
             <label>语言</label>
-            <input v-model="localTranscriber.language" class="form-input" placeholder="zh" />
+            <el-select v-model="localTranscriber.language" style="width: 100%">
+              <el-option label="zh" value="zh" />
+              <el-option label="en" value="en" />
+              <el-option label="auto" value="auto" />
+            </el-select>
           </div>
           <div class="field-item">
             <label>设备</label>
@@ -291,7 +329,7 @@ onMounted(() => {
         </div>
         <div class="action-row right">
           <el-button plain :loading="checkingEnv" @click="checkEnv">检测环境 (CUDA/FFmpeg)</el-button>
-          <el-button plain :loading="testingLocal" @click="testLocalTranscriber">测试命令</el-button>
+          <el-button plain :loading="testingLocal" @click="testLocalTranscriber">测试转写命令</el-button>
           <el-button type="primary" :loading="savingLocal" @click="saveLocalTranscriber">保存配置</el-button>
         </div>
       </section>
@@ -309,7 +347,7 @@ onMounted(() => {
         </div>
         <div class="preset-row">
           <button
-            v-for="preset in videoPresets"
+            v-for="preset in visibleVideoPresets"
             :key="preset.id"
             type="button"
             class="preset-btn"
@@ -318,20 +356,6 @@ onMounted(() => {
           >
             {{ preset.label }}（{{ preset.appliesTo }}）
           </button>
-        </div>
-        <div class="form-grid three-col" :class="{ disabled: !videoForm.enabled }">
-          <div class="field-item"><label>最大关键帧数</label><el-input-number v-model="videoForm.maxFrames" :min="4" :max="120" /></div>
-          <div class="field-item"><label>场景阈值</label><el-input-number v-model="videoForm.sceneThreshold" :min="0.05" :max="0.95" :step="0.01" /></div>
-          <div class="field-item"><label>每场景帧数</label><el-input-number v-model="videoForm.perSceneMax" :min="1" :max="3" /></div>
-          <div class="field-item"><label>最小场景间隔(秒)</label><el-input-number v-model="videoForm.minSceneGapSec" :min="0.2" :max="30" :step="0.1" /></div>
-          <div class="field-item"><label>去重阈值</label><el-input-number v-model="videoForm.dedupeHashDistance" :min="1" :max="64" /></div>
-          <div class="field-item"><label>黑屏亮度阈值</label><el-input-number v-model="videoForm.blackFrameLumaThreshold" :min="0" :max="255" /></div>
-          <div class="field-item"><label>清晰度阈值</label><el-input-number v-model="videoForm.blurVarianceThreshold" :min="1" :max="10000" /></div>
-          <div class="field-item"><label>抽帧宽度</label><el-input-number v-model="videoForm.extractWidth" :min="160" :max="1920" :step="10" /></div>
-          <div class="field-item"><label>超时(ms)</label><el-input-number v-model="videoForm.timeoutMs" :min="15000" :max="600000" :step="1000" /></div>
-        </div>
-        <div class="action-row right">
-          <el-button type="primary" :loading="savingVideo" @click="saveVideoUnderstanding">保存关键帧参数</el-button>
         </div>
       </section>
     </div>
@@ -564,6 +588,27 @@ onMounted(() => {
 
 .env-label {
   color: #475569;
+}
+
+.env-info-banner {
+  margin: 12px 0 16px;
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.env-info-banner code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
 }
 
 @media (max-width: 980px) {

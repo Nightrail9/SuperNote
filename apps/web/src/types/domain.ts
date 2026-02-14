@@ -54,8 +54,8 @@ export type IntegrationConfig = {
 
 export type LocalTranscriberConfig = {
   engine: 'whisper_cli'
-  command: string
-  ffmpegBin: string
+  command?: string
+  ffmpegBin?: string
   model: string
   language: string
   device: 'auto' | 'cpu' | 'cuda'

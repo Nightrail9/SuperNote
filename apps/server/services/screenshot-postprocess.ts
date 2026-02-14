@@ -2,18 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { resolveFfmpegBin } from '../utils/ffmpeg-resolver.js';
+import { getErrorMessage } from '../utils/http-error.js';
 
 const execFileAsync = promisify(execFile);
 
-const SCREENSHOT_MARKER_PATTERN = /\*?Screenshot-\[(\d{2}):(\d{2})\]/g;
-
-function resolveFfmpegBin(): string {
-  const bundledFfmpeg = path.resolve('tools', 'ffmpeg', 'bin', 'ffmpeg.exe');
-  if (process.env.FFMPEG_BIN?.trim()) {
-    return process.env.FFMPEG_BIN.trim();
-  }
-  return fs.existsSync(bundledFfmpeg) ? bundledFfmpeg : 'ffmpeg';
-}
+const SCREENSHOT_MARKER_PATTERN = /\*?Screenshot-\[(\d{2}):(\d{2})\]\*?/g;
 
 function parseMarkerTimestamps(markdown: string): Array<{ marker: string; seconds: number }> {
   const matches = markdown.matchAll(SCREENSHOT_MARKER_PATTERN);
@@ -94,7 +88,7 @@ export async function replaceScreenshotMarkers(options: {
       markdown = markdown.replace(item.marker, `![](${publicUrl})`);
       replaced += 1;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       warnings.push(`截图提取失败（${item.marker}）：${message}`);
     }
   }

@@ -8,6 +8,8 @@ coverage/
 
 # Runtime outputs
 storage/temp/
+storage/data/screenshots/
+storage/public/screenshots/
 temp/
 
 # Legacy path kept locally when files are locked by editor/processes
@@ -23,6 +25,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+env/
 
 # Editor / local agent config
 .vscode/

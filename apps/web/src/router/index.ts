@@ -41,6 +41,29 @@ export const appMenu: AppMenuItem[] = [
   },
 ]
 
+function resolveLegacyGeneratePath(taskIdRaw: unknown): string {
+  const taskId = typeof taskIdRaw === 'string' ? taskIdRaw : ''
+  if (!taskId) {
+    return '/create/bilibili'
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(`supernote-task-meta:${taskId}`)
+      if (raw) {
+        const parsed = JSON.parse(raw) as { sourceType?: string }
+        if (parsed?.sourceType === 'web') {
+          return `/create/web/generate/${taskId}`
+        }
+      }
+    } catch {
+      return `/create/bilibili/generate/${taskId}`
+    }
+  }
+
+  return `/create/bilibili/generate/${taskId}`
+}
+
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -50,7 +73,12 @@ const routes: RouteRecordRaw[] = [
       { path: 'create', redirect: '/create/bilibili' },
       { path: 'create/bilibili', component: () => import('../views/create/CreatePage.vue') },
       { path: 'create/web', component: () => import('../views/create/WebCreatePage.vue') },
-      { path: 'create/generate/:taskId', component: () => import('../views/create/GenerateNotePage.vue') },
+      { path: 'create/bilibili/generate/:taskId', component: () => import('../views/create/GenerateBilibiliNotePage.vue') },
+      { path: 'create/web/generate/:taskId', component: () => import('../views/create/GenerateWebNotePage.vue') },
+      {
+        path: 'create/generate/:taskId',
+        redirect: (to) => resolveLegacyGeneratePath(to.params.taskId),
+      },
       { path: 'history/notes', component: () => import('../views/history/NotesPage.vue') },
       { path: 'history/drafts', component: () => import('../views/history/DraftsPage.vue') },
       { path: 'settings/models', component: () => import('../views/settings/ModelsPage.vue') },

@@ -12,10 +12,17 @@
     }
   },
   "scripts": {
+    "dev": "npm run dev:server",
+    "dev:server": "tsx apps/server/index.ts",
+    "dev:web": "npm --prefix apps/web run dev",
     "build": "tsc",
+    "build:web": "npm --prefix apps/web run build",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx apps/server/index.ts"
+    "test:server:file": "node scripts/test/run-server-test.mjs",
+    "test:server:all": "node scripts/test/run-all-server-tests.mjs",
+    "docker:config": "docker compose -f infra/docker/docker-compose.yml config",
+    "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d"
   },
   "keywords": [
     "bilibili",

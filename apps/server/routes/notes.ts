@@ -9,14 +9,7 @@ import {
 import { startGenerateTask } from '../services/note-generation.js';
 import { normalizeNoteFormats } from '../services/note-options.js';
 import { sendApiError, toErrorMessage } from '../utils/http-error.js';
-
-function parsePositiveInt(value: unknown, fallback: number): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-  return Math.floor(parsed);
-}
+import { parsePositiveInt } from '../utils/validation.js';
 
 export function createNotesRouter(): Router {
   const router = Router();

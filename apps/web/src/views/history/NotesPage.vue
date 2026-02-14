@@ -10,13 +10,14 @@ import type { Note } from '../../types/domain'
 import { formatDateTime } from '../../utils/datetime'
 import { buildMarkdownName, downloadMarkdownFile } from '../../utils/markdown'
 import { buildPageKeywordQuery, resolveRowIndexById } from '../../utils/list'
+import { HISTORY_FIXED_BODY_ROWS, HISTORY_PAGE_SIZE, NOTE_TABLE_COLUMNS, resolveSourceLabel } from './table-config'
 
 const MarkdownPreview = defineAsyncComponent(() => import('../../components/markdown/MarkdownPreview.vue'))
 const MarkdownEditor = defineAsyncComponent(() => import('../../components/markdown/MarkdownEditor.vue'))
 
 const route = useRoute()
 const router = useRouter()
-const FIXED_PAGE_SIZE = 10
+const FIXED_PAGE_SIZE = HISTORY_PAGE_SIZE
 
 const loading = ref(false)
 const items = ref<Note[]>([])
@@ -47,26 +48,7 @@ const page = computed(() => {
 const pageSize = computed(() => FIXED_PAGE_SIZE)
 const keyword = computed(() => (typeof route.query.keyword === 'string' ? route.query.keyword : ''))
 
-const tableColumns = [
-  { key: 'title', label: '标题', minWidth: 260, flex: 2.3 },
-  { key: 'source', label: '来源', minWidth: 220, flex: 1.8 },
-  { key: 'updatedAt', label: '更新时间', minWidth: 180, flex: 1.4 },
-  { key: 'actions', label: '操作', minWidth: 220, flex: 1.5, freeze: 'right' as const, align: 'center' as const },
-]
-
-function resolveSourceLabel(sourceUrl: string) {
-  const raw = sourceUrl.trim().toLowerCase()
-  if (!raw) return '未知来源'
-  if (raw.includes('bilibili.com') || raw.includes('b23.tv')) return 'Bilibili'
-  if (raw.includes('youtube.com') || raw.includes('youtu.be')) return 'YouTube'
-
-  try {
-    const host = new URL(sourceUrl).hostname.replace(/^www\./, '')
-    return host || '其他'
-  } catch {
-    return '其他'
-  }
-}
+const tableColumns = NOTE_TABLE_COLUMNS
 
 function updateQuery(patch: { page?: number; pageSize?: number; keyword?: string }) {
   const next = buildPageKeywordQuery(route.query as Record<string, unknown>, { page: page.value, keyword: keyword.value }, patch)
@@ -234,7 +216,13 @@ onMounted(() => {
     </div>
 
     <div class="history-table-wrap">
-      <HistoryResizableTable :rows="items" :columns="tableColumns" :loading="loading" empty-text="暂无历史笔记">
+      <HistoryResizableTable
+        :rows="items"
+        :columns="tableColumns"
+        :loading="loading"
+        :fixed-body-rows="HISTORY_FIXED_BODY_ROWS"
+        empty-text="暂无历史笔记"
+      >
         <template #cell-title="{ row }">
           <el-text>{{ row.title || '未命名笔记' }}</el-text>
         </template>
@@ -265,7 +253,7 @@ onMounted(() => {
       />
     </div>
 
-      <el-dialog
+    <el-dialog
       v-model="previewOpen"
       :title="activePreviewNote?.title || '笔记预览'"
       width="72%"
@@ -273,18 +261,22 @@ onMounted(() => {
       append-to-body
       class="history-preview-dialog"
       :z-index="3000"
+      :close-on-click-modal="false"
       @closed="closePreview"
     >
-      <div class="history-preview-toolbar">
-        <el-text type="info" class="history-preview-counter">第 {{ activePreviewIndex + 1 }} / {{ items.length }} 条</el-text>
-        <div class="history-preview-nav">
-          <el-button :disabled="!canPreviewPrev || previewLoading" @click="previewPrev">上一条</el-button>
-          <el-button type="primary" :disabled="!canPreviewNext || previewLoading" @click="previewNext">下一条</el-button>
+      <el-card shadow="never" class="history-preview-card">
+        <div class="history-preview-toolbar">
+          <el-text type="info" class="history-preview-counter">第 {{ activePreviewIndex + 1 }} / {{ items.length }} 条</el-text>
+          <div class="history-preview-nav">
+            <el-button :disabled="!canPreviewPrev || previewLoading" @click="previewPrev">上一条</el-button>
+            <el-button type="primary" :disabled="!canPreviewNext || previewLoading" @click="previewNext">下一条</el-button>
+          </div>
         </div>
-      </div>
-      <div v-loading="previewLoading" class="history-preview-body">
-        <MarkdownPreview v-if="previewOpen || previewLoading" :source="activePreviewNote?.contentMd || ''" />
-      </div>
+        <el-text type="info" class="history-preview-source">来源：{{ resolveSourceLabel(activePreviewNote?.sourceUrl || '') }}</el-text>
+        <div v-loading="previewLoading" class="history-preview-body">
+          <MarkdownPreview v-if="previewOpen || previewLoading" :source="activePreviewNote?.contentMd || ''" />
+        </div>
+      </el-card>
     </el-dialog>
 
     <el-dialog
@@ -316,3 +308,33 @@ onMounted(() => {
     </el-dialog>
   </PageBlock>
 </template>
+
+<style scoped>
+.history-preview-card {
+  border-radius: 12px;
+}
+
+.history-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.history-preview-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.history-preview-source {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.history-preview-body {
+  min-height: 460px;
+  max-height: 62vh;
+  overflow: auto;
+}
+</style>

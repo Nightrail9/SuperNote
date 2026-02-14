@@ -12,12 +12,23 @@ export type GenerateTaskMeta = {
 
 type SourceType = 'bilibili' | 'web'
 
+export type CreatePreferences = {
+  promptId?: string
+  formats?: string[]
+  gpuAccelerated?: boolean
+  includeToc?: boolean
+}
+
 function taskMetaKey(taskId: string) {
   return `supernote-task-meta:${taskId}`
 }
 
 function activeTaskKey(sourceType: SourceType) {
   return `supernote-active-task:${sourceType}`
+}
+
+function createPreferencesKey(sourceType: SourceType) {
+  return `supernote-create-preferences:${sourceType}`
 }
 
 let legacyTaskMetaCleaned = false
@@ -113,6 +124,53 @@ export function getActiveTaskId(sourceType: SourceType): string | undefined {
   try {
     const raw = window.localStorage.getItem(activeTaskKey(sourceType))
     return raw?.trim() ? raw.trim() : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function saveCreatePreferences(sourceType: SourceType, preferences: CreatePreferences) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.setItem(createPreferencesKey(sourceType), JSON.stringify(preferences))
+  } catch {
+    return
+  }
+}
+
+export function readCreatePreferences(sourceType: SourceType): CreatePreferences | undefined {
+  if (typeof window === 'undefined') {
+    return undefined
+  }
+  try {
+    const raw = window.localStorage.getItem(createPreferencesKey(sourceType))
+    if (!raw) {
+      return undefined
+    }
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') {
+      return undefined
+    }
+
+    const data = parsed as Record<string, unknown>
+    const preferences: CreatePreferences = {}
+
+    if (typeof data.promptId === 'string') {
+      preferences.promptId = data.promptId
+    }
+    if (Array.isArray(data.formats)) {
+      preferences.formats = data.formats.filter((item): item is string => typeof item === 'string')
+    }
+    if (typeof data.gpuAccelerated === 'boolean') {
+      preferences.gpuAccelerated = data.gpuAccelerated
+    }
+    if (typeof data.includeToc === 'boolean') {
+      preferences.includeToc = data.includeToc
+    }
+
+    return preferences
   } catch {
     return undefined
   }

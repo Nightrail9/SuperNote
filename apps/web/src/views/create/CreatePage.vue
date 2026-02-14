@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { api } from '../../api/modules'
-import { getActiveTaskId, saveTaskMeta, setActiveTaskId } from './taskMeta'
+import { getActiveTaskId, readCreatePreferences, saveCreatePreferences, saveTaskMeta, setActiveTaskId } from './taskMeta'
 import { useTaskConfigOptions } from './useTaskConfigOptions'
 import type { LocalTranscriberConfig, NoteFormat } from '../../types/domain'
 
@@ -38,7 +39,6 @@ const selectedFormats = ref<NoteFormat[]>([])
 
 const generating = ref(false)
 const activeTaskId = ref('')
-const activeTaskLoading = ref(false)
 
 const {
   modelsLoading,
@@ -56,12 +56,42 @@ const noteFormatOptions: Array<{ label: string; value: NoteFormat }> = [
 
 const gpuAccelerated = ref(false)
 const localTranscriberConfig = ref<LocalTranscriberConfig | null>(null)
+const hasStoredGpuPreference = ref(false)
+
+const ALLOWED_FORMATS = new Set<NoteFormat>(['toc', 'screenshot'])
+
+function persistCreatePreferences() {
+  saveCreatePreferences('bilibili', {
+    promptId: selectedPromptId.value,
+    formats: selectedFormats.value,
+    gpuAccelerated: gpuAccelerated.value,
+  })
+}
+
+function restoreCreatePreferences() {
+  const stored = readCreatePreferences('bilibili')
+  if (!stored) {
+    return
+  }
+  if (typeof stored.promptId === 'string') {
+    selectedPromptId.value = stored.promptId
+  }
+  if (Array.isArray(stored.formats)) {
+    selectedFormats.value = stored.formats.filter((item): item is NoteFormat => ALLOWED_FORMATS.has(item as NoteFormat))
+  }
+  if (typeof stored.gpuAccelerated === 'boolean') {
+    gpuAccelerated.value = stored.gpuAccelerated
+    hasStoredGpuPreference.value = true
+  }
+}
 
 async function loadLocalTranscriberConfig() {
   try {
     const response = await api.getLocalTranscriber()
     localTranscriberConfig.value = response.data
-    gpuAccelerated.value = response.data.device === 'cuda'
+    if (!hasStoredGpuPreference.value) {
+      gpuAccelerated.value = response.data.device === 'cuda'
+    }
   } catch {
     // 静默失败，使用默认值
   }
@@ -86,8 +116,21 @@ async function updateGpuDevice(enabled: boolean) {
 }
 
 watch(gpuAccelerated, (newValue) => {
+  persistCreatePreferences()
   void updateGpuDevice(newValue)
 })
+
+watch(selectedPromptId, () => {
+  persistCreatePreferences()
+})
+
+watch(
+  selectedFormats,
+  () => {
+    persistCreatePreferences()
+  },
+  { deep: true }
+)
 
 watch(
   [defaultPromptId, promptSelectOptions],
@@ -201,6 +244,11 @@ function normalizeSourceText(text: string) {
 }
 
 async function handleGenerate() {
+  if (activeTaskId.value) {
+    await router.push(`/create/bilibili/generate/${activeTaskId.value}`)
+    return
+  }
+
   if (modelsLoading.value) {
     ElMessage.info('模型列表加载中，请稍候再试')
     return
@@ -238,7 +286,7 @@ async function handleGenerate() {
       selectedPromptId.value ?? defaultPromptId.value,
       defaultModelId.value,
       'bilibili',
-      formatsWithGpu
+      formatsWithGpu as NoteFormat[]
     )
     const firstValid = normalizedPreview.find((item) => item.valid)
     saveTaskMeta(result.data.taskId, {
@@ -249,15 +297,14 @@ async function handleGenerate() {
       noteTitle: initialDraft?.title,
       modelId: defaultModelId.value,
       promptId: selectedPromptId.value ?? defaultPromptId.value,
-      formats: formatsWithGpu,
-      gpuAccelerated: gpuAccelerated.value,
+      formats: formatsWithGpu as NoteFormat[],
     })
     setActiveTaskId('bilibili', result.data.taskId)
     activeTaskId.value = result.data.taskId
     sourceText.value = ''
     urlError.value = ''
     ElMessage.success('生成任务已提交')
-    await router.push(`/create/generate/${result.data.taskId}`)
+    await router.push(`/create/bilibili/generate/${result.data.taskId}`)
   } catch (error) {
     ElMessage.error((error as { message?: string }).message ?? '创建任务失败')
   } finally {
@@ -265,13 +312,15 @@ async function handleGenerate() {
   }
 }
 
+const generateButtonType = computed(() => (activeTaskId.value ? 'warning' : 'primary'))
+const generateButtonLabel = computed(() => (activeTaskId.value ? '生成中' : '生成笔记'))
+
 async function refreshActiveTask() {
   const taskId = getActiveTaskId('bilibili')
   activeTaskId.value = taskId ?? ''
   if (!taskId) {
     return
   }
-  activeTaskLoading.value = true
   try {
     const response = await api.getTask(taskId)
     const status = String(response.data.status ?? '').toLowerCase()
@@ -281,36 +330,11 @@ async function refreshActiveTask() {
     }
   } catch {
     return
-  } finally {
-    activeTaskLoading.value = false
   }
-}
-
-async function handleCancelActiveTask() {
-  if (!activeTaskId.value) {
-    return
-  }
-  activeTaskLoading.value = true
-  try {
-    await api.cancelTask(activeTaskId.value)
-    ElMessage.success('任务已取消')
-    setActiveTaskId('bilibili')
-    activeTaskId.value = ''
-  } catch (error) {
-    ElMessage.error((error as { message?: string }).message ?? '取消任务失败')
-  } finally {
-    activeTaskLoading.value = false
-  }
-}
-
-function handleContinueActiveTask() {
-  if (!activeTaskId.value) {
-    return
-  }
-  void router.push(`/create/generate/${activeTaskId.value}`)
 }
 
 onMounted(() => {
+  restoreCreatePreferences()
   void refreshTaskConfigOptions()
   void refreshActiveTask()
   void loadLocalTranscriberConfig()
@@ -329,23 +353,6 @@ onBeforeUnmount(() => {
     <div class="create-page-hero reveal-step-1">
       <h2 class="page-block-title">B站链接生成笔记</h2>
       <p class="page-desc">输入 B 站链接并选择模型后，开始生成并进入任务页查看进度</p>
-      <el-card v-if="activeTaskId" class="active-task-banner" shadow="never">
-        <div class="active-task-content">
-          <el-icon class="task-icon is-loading"><Loading /></el-icon>
-          <div class="task-info">
-            <div class="task-title">正在进行笔记生成</div>
-            <div class="task-id">任务ID: {{ activeTaskId.slice(0, 8) }}...</div>
-          </div>
-          <div class="task-actions">
-            <el-button size="small" :loading="activeTaskLoading" @click="handleContinueActiveTask">
-              <el-icon class="btn-icon"><VideoPlay /></el-icon>继续查看
-            </el-button>
-            <el-button size="small" type="danger" plain :loading="activeTaskLoading" @click="handleCancelActiveTask">
-              <el-icon class="btn-icon"><CircleClose /></el-icon>取消
-            </el-button>
-          </div>
-        </div>
-      </el-card>
     </div>
 
     <div class="create-workspace create-workspace--bili reveal-step-2">
@@ -401,7 +408,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="note-generate-action">
-          <el-button type="primary" size="large" :loading="generating" @click="handleGenerate">生成笔记</el-button>
+          <el-button :type="generateButtonType" size="large" :loading="generating" @click="handleGenerate">
+            <el-icon v-if="activeTaskId" class="generate-status-icon is-rotating"><Loading /></el-icon>
+            {{ generateButtonLabel }}
+          </el-button>
           <el-text size="small" type="info" class="generate-hint">建议：长视频勾选"目录"；教程类内容可搭配"原片截图"</el-text>
         </div>
       </el-card>
@@ -518,67 +528,21 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.active-task-banner {
-  background: linear-gradient(135deg, #e3f2fd 0%, #f0f7ff 100%);
-  border: 1px solid #90caf9;
-  margin-bottom: 16px;
+.generate-status-icon {
+  margin-right: 4px;
 }
 
-.active-task-banner :deep(.el-card__body) {
-  padding: 12px 16px;
+.generate-status-icon.is-rotating {
+  animation: generate-button-spin 1.6s linear infinite;
 }
 
-.active-task-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.task-icon {
-  font-size: 24px;
-  color: #1976d2;
-  flex-shrink: 0;
-}
-
-.task-icon.is-loading {
-  animation: rotating 2s linear infinite;
-}
-
-@keyframes rotating {
+@keyframes generate-button-spin {
   from {
     transform: rotate(0deg);
   }
   to {
     transform: rotate(360deg);
   }
-}
-
-.task-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.task-title {
-  font-weight: 600;
-  color: #1565c0;
-  font-size: 14px;
-}
-
-.task-id {
-  font-size: 12px;
-  color: #64b5f6;
-  margin-top: 2px;
-}
-
-.task-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.task-actions .btn-icon {
-  margin-right: 4px;
-  font-size: 14px;
 }
 
 @media (max-width: 900px) {

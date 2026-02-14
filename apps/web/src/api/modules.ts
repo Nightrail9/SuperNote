@@ -122,7 +122,7 @@ export const api = {
     return http.get<LocalTranscriberConfig>('/settings/local-transcriber')
   },
   updateLocalTranscriber(payload: Partial<LocalTranscriberConfig>) {
-    return http.put<{ success: boolean }>('/settings/local-transcriber', payload)
+    return http.put<{ success: boolean; message?: string }>('/settings/local-transcriber', payload)
   },
   testLocalTranscriber(payload: Partial<LocalTranscriberConfig>) {
     return http.post<{ ok: boolean; message: string }>('/settings/local-transcriber/test', payload)

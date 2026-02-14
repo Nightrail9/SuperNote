@@ -1,146 +1,169 @@
 # AGENTS.md
+Operational guidance for coding agents working in this repository.
 
-Guidelines for AI agents working in the SuperNote repository.
+## Scope and priorities
+- Do only what the user requested.
+- Keep changes focused, minimal, and reviewable.
+- Avoid opportunistic refactors in unrelated modules.
+- If touching shared contracts, update both server and web call sites.
+- Preserve existing behavior unless a change is explicitly requested.
 
-## Project Overview
+## Repository map
+- `apps/server`: Express + TypeScript API (runtime app code).
+- `apps/web`: Vue 3 + Vite + TypeScript frontend.
+- `packages/parser-core/src`: shared parser core built by root `tsc`.
+- `scripts/test`: wrappers for server test execution.
+- `scripts/dev`: local setup/start scripts (`.bat`, `.sh`).
+- `infra/docker/docker-compose.yml`: canonical Docker compose file.
+- `storage/`: runtime/generated artifacts; avoid incidental edits.
 
-SuperNote is a local-first note generator for Bilibili videos and web pages. It's a TypeScript monorepo with:
-- **apps/server**: Express.js API server (Node.js 18+)
-- **apps/web**: Vue 3 + TypeScript frontend
-- **packages/parser-core**: Core Bilibili video parser library
+## Environment and toolchain
+- Package manager: `npm`.
+- Node.js: `>=18` (from `package.json` engines).
+- Root TS module mode: `NodeNext` + ESM.
+- Server runtime for TS execution: `tsx`.
+- Frontend build/typecheck: `vue-tsc` + `vite`.
 
-## Build Commands
-
+## Install
+Run from repo root:
 ```bash
-# Root - TypeScript compilation
-npm run build              # Compile parser-core to dist/
-npm run typecheck          # Type check without emitting
-npm run clean              # Remove dist/ directory
-
-# Development server
-npm run dev                # Start backend server (tsx apps/server/index.ts)
-
-# Frontend (apps/web/)
-cd apps/web
-npm run dev                # Start Vite dev server
-npm run build              # Build for production (vue-tsc + vite build)
-npm run preview            # Preview production build
+npm install
+npm --prefix apps/web install
 ```
 
-## Testing
+## Build, dev, typecheck, lint
+Run from repo root unless noted.
 
-Tests use **fast-check** for property-based testing. Run individual test files:
-
+Root/server-facing scripts:
 ```bash
-# Run a single test file
-npx tsx apps/server/services/ai-organizer.test.ts
-npx tsx apps/server/services/markdown-generator.test.ts
-npx tsx apps/server/routes/summarize.test.ts
-npx tsx apps/server/services/pipeline-utils.test.ts
+npm run dev
+npm run dev:server
+npm run dev:web
+npm run build
+npm run build:web
+npm run typecheck
+npm run clean
+npm run docker:config
+npm run docker:up
+```
+
+Frontend-only scripts:
+```bash
+npm --prefix apps/web run dev
+npm --prefix apps/web run build
+npm --prefix apps/web run preview
+```
+
+Notes:
+- `npm run dev` delegates to `dev:server`.
+- `npm run build` runs root `tsc` for `packages/parser-core/src` only.
+- Frontend `build` runs `vue-tsc -b && vite build`.
+- No root lint script is configured.
+- No frontend lint script is configured.
+
+## Test commands (important)
+Server tests are executable `*.test.ts` files run with `tsx`.
+
+Preferred single-test command:
+```bash
+npm run test:server:file -- apps/server/routes/settings-url.test.ts
+```
+
+Direct equivalent:
+```bash
 npx tsx apps/server/routes/settings-url.test.ts
+```
+
+More single-file examples:
+```bash
+npx tsx apps/server/routes/summarize.test.ts
 npx tsx apps/server/services/summary-pipeline.test.ts
-npx tsx apps/server/services/keyframe-selector.test.ts
+npx tsx apps/server/services/ai-organizer.test.ts
 ```
 
-Tests output pass/fail with ✓/✗ markers and exit with code 0 on success, 1 on failure.
-
-## Code Style Guidelines
-
-### TypeScript Configuration
-
-- **Target**: ES2022 with NodeNext module resolution
-- **Strict mode**: Enabled (strict, noImplicitReturns, noFallthroughCasesInSwitch, noUncheckedIndexedAccess, noImplicitOverride)
-- **Module**: ES modules (`"type": "module"` in package.json)
-
-### Naming Conventions
-
-- **Interfaces/Types**: PascalCase (e.g., `ServerConfig`, `ParseResult`)
-- **Functions**: camelCase (e.g., `loadConfig()`, `extractContent()`)
-- **Files**: kebab-case (e.g., `ai-organizer.ts`, `metadata-fetcher.ts`)
-- **Constants**: UPPER_SNAKE_CASE for true constants (e.g., `DEFAULT_CONFIG`, `QUALITY_PARAMS`)
-- **Factory functions**: Prefix with `create` (e.g., `createApp()`, `createBilibiliParser()`)
-
-### Imports and Exports
-
-- Use ES module imports with `.js` extensions for local files (e.g., `import { foo } from './bar.js'`)
-- Prefer named exports over default exports
-- Group imports: 1) external libraries, 2) internal modules
-- Export types explicitly using `export type { ... }`
-
-### Code Organization
-
-- Use JSDoc comments for all public APIs with `@example` blocks
-- Include requirement tracing in comments: `// Requirement X.Y: Description`
-- Section headers with `// === ... ===` for major code sections
-- Keep files under 300 lines when possible
-
-### Error Handling
-
-- Use custom error classes extending Error
-- Return typed error objects in results (e.g., `{ success: false, error: { code, message } }`)
-- Use `getErrorMessage()` utility for consistent error message extraction
-- Always handle promise rejections with try/catch
-
-### Types and Interfaces
-
-- Prefer interfaces over type aliases for object shapes
-- Use explicit return types on public functions
-- Use `readonly` for immutable properties
-- Use `unknown` instead of `any` for uncertain types
-
-### Comments
-
-- Trilingual codebase: English for code, Chinese allowed in comments for domain concepts
-- Document "why" not "what"
-- Use comment banners for major sections:
-  ```typescript
-  // ============================================================================
-  // Section Name
-  // ============================================================================
-  ```
-
-### Vue Frontend (apps/web/)
-
-- Composition API with `<script setup lang="ts">`
-- Use Element Plus UI components
-- Pinia for state management
-- Vue Router for routing
-- Axios for API calls
-
-### Environment Configuration
-
-- Load environment variables with `import 'dotenv/config'` at entry points
-- Use `loadConfig()` pattern for typed config objects
-- Optional vars use `|| undefined` to avoid empty strings
-
-## Project Structure
-
-```
-/
-├── apps/
-│   ├── server/          # Express API server
-│   │   ├── index.ts     # Entry point
-│   │   ├── routes/      # API route handlers
-│   │   ├── services/    # Business logic
-│   │   ├── middleware/  # Express middleware
-│   │   └── utils/       # Utilities
-│   └── web/             # Vue 3 frontend
-│       ├── src/
-│       │   ├── views/   # Page components
-│       │   ├── components/  # Reusable components
-│       │   ├── stores/  # Pinia stores
-│       │   └── api/     # API client
-├── packages/
-│   └── parser-core/     # Bilibili parser library
-│       └── src/
-├── storage/             # Runtime data directory
-└── tools/               # External tools (FFmpeg)
+Run all server tests:
+```bash
+npm run test:server:all
 ```
 
-## Dependencies
+PowerShell alternative:
+```powershell
+Get-ChildItem apps/server -Recurse -Filter *.test.ts | ForEach-Object { npx tsx $_.FullName }
+```
 
-- **Runtime**: express, dotenv
-- **Dev**: typescript, tsx, fast-check, @types/node, @types/express
-- **Frontend**: vue, pinia, vue-router, element-plus, axios, vite
+Execution behavior:
+- Some tests print custom summaries and may call `process.exit(0|1)`.
+- Property-based tests (`fast-check`) can run longer than route/unit tests.
+- Recommended loop: run one affected file first, then full suite.
 
-Always check existing imports before adding new dependencies.
+## Coding style and conventions
+
+## Formatting
+- Follow existing style in touched files; avoid formatting-only diffs.
+- Use 2-space indentation.
+- Server/parser-core generally use semicolons.
+- Frontend files generally use semicolonless style.
+- Keep lines readable; split long expressions intentionally.
+
+## Imports and modules
+- Use ESM `import`/`export` syntax.
+- Server local TS imports must include `.js` extension.
+- Use `import type` for type-only imports.
+- Remove unused imports.
+- Keep import order stable: external first, internal second.
+
+## TypeScript rules
+- Respect strict compiler settings in each package.
+- Root/server TS highlights: `strict`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `noUncheckedIndexedAccess`, `noImplicitOverride`.
+- Frontend TS highlights: `strict`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`.
+- Prefer explicit domain/request/response types over `any`.
+- Narrow `unknown` before property access.
+
+## Naming conventions
+- Types/interfaces/classes/Vue component filenames: `PascalCase`.
+- Variables/functions/composables: `camelCase`.
+- Constants: `UPPER_SNAKE_CASE` when semantically constant.
+- Server filenames are commonly `kebab-case`.
+- Use descriptive names for refs/computed/watchers and DTOs.
+
+## Error handling conventions
+- Treat caught errors as `unknown` and narrow safely.
+- Reuse helpers like `sendApiError` and `toErrorMessage` from `apps/server/utils/http-error.ts`.
+- Keep API error shape stable: `code`, `message`, optional `details`.
+- Use explicit HTTP status codes for validation vs server failures.
+- Avoid empty/silent `catch` unless intentional and documented.
+- Never leak secrets/tokens/keys in logs or API responses.
+
+## Server-specific guidance (`apps/server`)
+- Keep route flow predictable: parse -> validate -> execute -> respond.
+- Validate request payloads early and fail fast.
+- Preserve endpoint contracts unless a breaking change is requested.
+- Reuse existing helpers in `utils/` (validation, retry, path/url, http-error).
+
+## Frontend-specific guidance (`apps/web`)
+- Use Vue Composition API with `<script setup lang="ts">`.
+- Keep shared domain contracts in `apps/web/src/types/domain.ts`.
+- Reuse API normalization patterns in `apps/web/src/api/http.ts`.
+- Follow existing Element Plus usage and style token patterns.
+- Preserve existing mobile behavior and interaction patterns.
+
+## Cursor/Copilot rule files
+Checked locations:
+- `.cursor/rules/`
+- `.cursorrules`
+- `.github/copilot-instructions.md`
+
+Current status:
+- No Cursor rules or Copilot instruction files are present.
+
+If these files are added later:
+- Treat them as high-priority instructions.
+- Follow the most specific scope first (file/dir-level over repo-level).
+- Reconcile conflicts by preferring the stricter actionable rule.
+
+## Agent guardrails
+- Do not modify unrelated files.
+- Do not commit secrets (`.env`, credentials, API keys, tokens).
+- Avoid destructive operations on data or git history.
+- Prefer small diffs that are easy to review.
+- When commands or workflows change, update this file in the same task.

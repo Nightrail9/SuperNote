@@ -8,14 +8,7 @@ import {
   type NoteRecord,
 } from '../services/app-data-store.js';
 import { sendApiError, toErrorMessage } from '../utils/http-error.js';
-
-function parsePositiveInt(value: unknown, fallback: number): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-  return Math.floor(parsed);
-}
+import { parsePositiveInt } from '../utils/validation.js';
 
 export function createDraftsRouter(): Router {
   const router = Router();

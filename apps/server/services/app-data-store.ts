@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { normalizeJinaReaderEndpoint } from './jina-reader-client.js';
+import { isBundledFfmpegAvailable } from '../utils/ffmpeg-resolver.js';
 
 export type NoteRecord = {
   id: string;
@@ -204,11 +205,12 @@ function defaultIntegrations(): IntegrationConfigRecord {
 }
 
 function defaultLocalTranscriber(): LocalTranscriberConfigRecord {
-  const bundledFfmpeg = path.resolve('tools', 'ffmpeg', 'bin', 'ffmpeg.exe');
+  const bundledFfmpeg = 'tools/ffmpeg/bin/ffmpeg.exe';
+  const hasBundled = isBundledFfmpegAvailable();
   return {
     engine: 'whisper_cli',
-    command: process.env.LOCAL_ASR_COMMAND?.trim() || 'whisper',
-    ffmpegBin: process.env.FFMPEG_BIN?.trim() || (fs.existsSync(bundledFfmpeg) ? bundledFfmpeg : 'ffmpeg'),
+    command: process.env.LOCAL_ASR_COMMAND?.trim() || 'python',
+    ffmpegBin: process.env.FFMPEG_BIN?.trim() || (hasBundled ? bundledFfmpeg : 'ffmpeg'),
     model: process.env.LOCAL_ASR_MODEL?.trim() || 'small',
     language: process.env.LOCAL_ASR_LANGUAGE?.trim() || 'zh',
     device: (process.env.LOCAL_ASR_DEVICE?.trim() as LocalTranscriberConfigRecord['device']) || 'auto',
@@ -259,36 +261,46 @@ function normalizeLocalTranscriberConfig(
   incoming: Partial<LocalTranscriberConfigRecord> | undefined,
 ): LocalTranscriberConfigRecord {
   const defaults = defaultLocalTranscriber();
-  const device = incoming?.device;
+  const env = process.env;
+
+  // Priority: Environment variables > Saved config > Defaults
+  const command = env.LOCAL_ASR_COMMAND?.trim() || incoming?.command || defaults.command;
+  const ffmpegBin = env.FFMPEG_BIN?.trim() || incoming?.ffmpegBin || defaults.ffmpegBin;
+  const model = env.LOCAL_ASR_MODEL?.trim() || incoming?.model || defaults.model;
+  const language = env.LOCAL_ASR_LANGUAGE?.trim() || incoming?.language || defaults.language;
+  const deviceEnv = env.LOCAL_ASR_DEVICE?.trim();
+  const device =
+    deviceEnv === 'cpu' || deviceEnv === 'cuda' || deviceEnv === 'auto'
+      ? deviceEnv
+      : incoming?.device === 'cpu' || incoming?.device === 'cuda' || incoming?.device === 'auto'
+        ? incoming.device
+        : defaults.device;
+  const beamSize = env.LOCAL_ASR_BEAM_SIZE
+    ? Math.max(1, Math.min(10, Math.floor(Number.parseInt(env.LOCAL_ASR_BEAM_SIZE, 10))))
+    : typeof incoming?.beamSize === 'number'
+      ? Math.max(1, Math.min(10, Math.floor(incoming.beamSize)))
+      : defaults.beamSize;
+  const temperature = env.LOCAL_ASR_TEMPERATURE
+    ? Math.max(0, Math.min(1, Number.parseFloat(env.LOCAL_ASR_TEMPERATURE)))
+    : typeof incoming?.temperature === 'number'
+      ? Math.max(0, Math.min(1, incoming.temperature))
+      : defaults.temperature;
+  const timeoutMs = env.LOCAL_ASR_TIMEOUT_MS
+    ? Math.max(30000, Math.min(1800000, Math.floor(Number.parseInt(env.LOCAL_ASR_TIMEOUT_MS, 10))))
+    : typeof incoming?.timeoutMs === 'number'
+      ? Math.max(30000, Math.min(1800000, Math.floor(incoming.timeoutMs)))
+      : defaults.timeoutMs;
+
   return {
     engine: 'whisper_cli',
-    command:
-      typeof incoming?.command === 'string' && incoming.command.trim()
-        ? incoming.command.trim()
-        : defaults.command,
-    ffmpegBin:
-      typeof incoming?.ffmpegBin === 'string' && incoming.ffmpegBin.trim()
-        ? incoming.ffmpegBin.trim()
-        : defaults.ffmpegBin,
-    model:
-      typeof incoming?.model === 'string' && incoming.model.trim() ? incoming.model.trim() : defaults.model,
-    language:
-      typeof incoming?.language === 'string' && incoming.language.trim()
-        ? incoming.language.trim()
-        : defaults.language,
-    device: device === 'cpu' || device === 'cuda' || device === 'auto' ? device : defaults.device,
-    beamSize:
-      typeof incoming?.beamSize === 'number'
-        ? Math.max(1, Math.min(10, Math.floor(incoming.beamSize)))
-        : defaults.beamSize,
-    temperature:
-      typeof incoming?.temperature === 'number'
-        ? Math.max(0, Math.min(1, incoming.temperature))
-        : defaults.temperature,
-    timeoutMs:
-      typeof incoming?.timeoutMs === 'number'
-        ? Math.max(30000, Math.min(1800000, Math.floor(incoming.timeoutMs)))
-        : defaults.timeoutMs,
+    command,
+    ffmpegBin,
+    model,
+    language,
+    device,
+    beamSize,
+    temperature,
+    timeoutMs,
   };
 }
 

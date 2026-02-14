@@ -215,16 +215,7 @@ export class DefaultVideoDownloader implements VideoDownloader {
     }
 
     throw lastError ?? new Error('Download failed after retries');
-  }
 }
-
-export function sanitizeFilename(filename: string): string {
-  return filename
-    .trim()
-    .replace(/[<>:"/\\|?*]/g, '_')
-    .replace(/\s+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
 }
 
 function escapeRegExp(value: string): string {

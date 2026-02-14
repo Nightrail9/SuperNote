@@ -2,223 +2,146 @@
 
 [中文文档](./README_CH.md)
 
-SuperNote is a local-first note generator for Bilibili videos and web pages. It extracts audio, transcribes speech using OpenAI Whisper, captures keyframes, and generates structured notes.
+SuperNote is a local-first note generation tool for Bilibili videos and web pages. It uses local transcription (Whisper), optional keyframe extraction, and AI organization to generate structured notes.
 
-## Features
+## Highlights
 
-- **Bilibili Video Notes**: Extract audio, transcribe with Whisper, capture keyframes, AI-powered organization
-- **Web Page Notes**: Use Jina Reader to extract and summarize web content
-- **Local-first**: All data stored locally, privacy-focused
-- **Modern Stack**: Node.js + Express backend, Vue 3 + TypeScript frontend
-- **Docker Ready**: One-command deployment with Docker Compose
-
-## Quick Start
-
-### Option 1: Docker (Recommended)
-
-The easiest way to run SuperNote. Includes all dependencies (Node.js, Python, Whisper, FFmpeg).
-
-#### Windows (with Docker Desktop)
-
-```powershell
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/SuperNote.git
-cd SuperNote
-
-# Start with Docker Compose
-docker-compose up -d
-
-# Access the application
-# Open http://localhost:3000 in your browser
-```
-
-#### Linux (Ubuntu/Debian)
-
-```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/SuperNote.git
-cd SuperNote
-
-# Start with Docker Compose
-sudo docker-compose up -d
-
-# Or without sudo (if user is in docker group)
-docker-compose up -d
-
-# Access the application
-# Open http://localhost:3000 in your browser
-```
-
-#### View Logs
-
-```bash
-docker-compose logs -f supernote
-```
-
-#### Stop the Application
-
-```bash
-docker-compose down
-```
-
-### Option 2: Manual Installation
-
-If you prefer to run without Docker, install the following prerequisites:
-
-#### Prerequisites
-
-- **Node.js** 18+ and npm 9+
-- **Python** 3.10+ (for Whisper)
-- **FFmpeg** (for audio/video processing)
-- **Whisper**: `pip install openai-whisper`
-
-#### Windows
-
-```powershell
-# Install backend dependencies
-npm install
-
-# Install frontend dependencies
-cd apps/web
-npm install
-cd ../..
-
-# Start backend
-npm run dev
-
-# In another terminal, start frontend
-cd apps/web
-npm run dev
-```
-
-#### Linux
-
-```bash
-# Install system dependencies
-sudo apt update
-sudo apt install -y ffmpeg python3 python3-pip
-
-# Install Whisper
-pip3 install openai-whisper
-
-# Install backend dependencies
-npm install
-
-# Install frontend dependencies
-cd apps/web && npm install && cd ../..
-
-# Make start script executable
-chmod +x start.sh
-
-# Start the application
-./start.sh
-```
-
-## First-Time Configuration
-
-1. Open `http://localhost:3000` in your browser
-2. Click the settings icon → **Local Engine & Integrations**
-3. Configure Local Transcriber:
-   - **Command**: `whisper` (Docker) or full path to your whisper executable
-   - **FFmpeg Path**: `ffmpeg` (Docker) or full path
-   - **Model**: `base` (recommended for Docker), `small` for better quality
-   - **Device**: `cpu` (Docker), `cuda` if you have GPU
-4. Click **Test Command** to verify
-5. Save settings
-
-## Usage
-
-### Bilibili Notes
-
-1. Go to **Create → Bilibili**
-2. Paste one or more Bilibili video URLs
-3. Click Submit and wait for processing
-4. Save as draft or note
-
-### Web Notes
-
-1. Go to **Create → Web**
-2. Paste one or more web page URLs
-3. Click Submit
-
-## Environment Variables
-
-Create a `.env` file from `.env.example`:
-
-```bash
-cp .env.example .env
-```
-
-Key variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3000` |
-| `SESSDATA` | Bilibili session cookie (optional) | - |
-| `JINA_API_KEY` | Jina Reader API key (optional) | - |
-| `LOCAL_ASR_COMMAND` | Whisper command | `whisper` |
-| `LOCAL_ASR_MODEL` | Whisper model | `base` |
-| `LOCAL_ASR_DEVICE` | Compute device | `cpu` |
-
-## Development
-
-```bash
-# Type check
-npm run typecheck
-
-# Build backend
-npm run build
-
-# Clean build
-npm run clean
-```
+- Local-first processing for video/audio workflows.
+- Vue 3 frontend + Express backend.
+- Supports Bilibili links and web-page ingestion.
+- Task-based generation pipeline with progress and retry support.
 
 ## Project Structure
 
-```
+```text
 .
 ├── apps/
-│   ├── server/          # Express.js API server
-│   └── web/             # Vue 3 frontend
+│   ├── server/                # Express API
+│   └── web/                   # Vue 3 frontend
 ├── packages/
-│   └── parser-core/     # Bilibili parser library
-├── storage/             # Data storage (created automatically)
-├── Dockerfile           # Docker image definition
-└── docker-compose.yml   # Docker Compose configuration
+│   └── parser-core/           # Shared parser core
+├── scripts/
+│   ├── dev/                   # Canonical setup/start scripts
+│   └── test/                  # Test runner scripts
+├── infra/
+│   └── docker/                # Dockerfile + compose (canonical)
+├── storage/                   # Runtime data/temp/public assets
+├── tools/                     # Local tool binaries (e.g. ffmpeg)
+├── AGENTS.md
+├── package.json
+└── tsconfig.json
 ```
 
-## Troubleshooting
+## Requirements
 
-### Docker: Container fails to start
+- Node.js >= 18
+- npm >= 9
+- Python >= 3.10 (for local ASR workflows)
+- FFmpeg available in PATH or under `tools/ffmpeg/bin`
+
+## Installation
+
+Run from project root:
 
 ```bash
-# Check logs
-docker-compose logs supernote
-
-# Rebuild the image
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+npm install
+npm --prefix apps/web install
 ```
 
-### Whisper not found
+Windows helper:
 
-Docker: Already included. Manual: Ensure whisper is in PATH or provide full path in settings.
+```bat
+setup.bat
+```
 
-### FFmpeg not found
+Notes:
 
-Docker: Already included. Manual: Install FFmpeg and configure path in settings.
+- Canonical setup script is `scripts/dev/setup.bat`.
+- Root `setup.bat` is a compatibility wrapper.
 
-### Transcription timeout
+## Development
 
-- Use a smaller model (`base` or `tiny`)
-- Increase timeout in settings
-- Ensure sufficient system resources
+### Start backend
+
+```bash
+npm run dev
+# or
+npm run dev:server
+```
+
+### Start frontend
+
+```bash
+npm run dev:web
+```
+
+### One-click start (Windows/macOS/Linux wrapper)
+
+```bat
+start.bat
+```
+
+```bash
+./start.sh
+```
+
+Notes:
+
+- Canonical start scripts are in `scripts/dev/`.
+- Root `start.bat` and `start.sh` are compatibility wrappers.
+
+## Build / Typecheck
+
+```bash
+npm run build
+npm run build:web
+npm run typecheck
+```
+
+## Test
+
+Run a single server test file:
+
+```bash
+npm run test:server:file -- apps/server/routes/settings-url.test.ts
+```
+
+Run all server tests:
+
+```bash
+npm run test:server:all
+```
+
+## Docker Deployment
+
+Canonical Docker files are under `infra/docker/`.
+
+Validate compose:
+
+```bash
+npm run docker:config
+```
+
+Start services:
+
+```bash
+npm run docker:up
+```
+
+Equivalent direct command:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml up -d
+```
+
+## Runtime Data
+
+- `storage/data`: persisted application data.
+- `storage/temp`: temporary processing files.
+- `storage/public`: generated static assets.
+
+Do not commit secrets from `.env` or runtime data in `storage/`.
 
 ## License
 
 MIT
-
-## Support
-
-For issues and feature requests, please use [GitHub Issues](https://github.com/YOUR_USERNAME/SuperNote/issues).

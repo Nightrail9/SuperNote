@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import * as path from 'path';
+import * as fs from 'fs';
 import {
   getAppData,
   maskSecret,
@@ -18,8 +20,108 @@ import { createAbortSignal } from '../utils/retry.js';
 import { TIMEOUTS } from '../constants/index.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { resolveProjectPath, resolveCommand, getProjectRoot } from '../utils/path-resolver.js';
 
 const execFileAsync = promisify(execFile);
+
+const LOCAL_TRANSCRIBER_ENV_KEYS = [
+  'LOCAL_ASR_COMMAND',
+  'FFMPEG_BIN',
+  'LOCAL_ASR_MODEL',
+  'LOCAL_ASR_LANGUAGE',
+  'LOCAL_ASR_DEVICE',
+  'LOCAL_ASR_BEAM_SIZE',
+  'LOCAL_ASR_TEMPERATURE',
+  'LOCAL_ASR_TIMEOUT_MS',
+] as const;
+
+type LocalTranscriberEnvKey = (typeof LOCAL_TRANSCRIBER_ENV_KEYS)[number];
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function upsertEnvFileValues(filePath: string, values: Record<LocalTranscriberEnvKey, string>): void {
+  const raw = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : '';
+  const lineBreak = raw.includes('\r\n') ? '\r\n' : '\n';
+  const lines = raw.length > 0 ? raw.split(/\r?\n/) : [];
+  const updated = new Set<LocalTranscriberEnvKey>();
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const current = lines[i] ?? '';
+    if (!current.trim() || current.trimStart().startsWith('#')) {
+      continue;
+    }
+    const match = /^([A-Z0-9_]+)\s*=/.exec(current);
+    if (!match) {
+      continue;
+    }
+    const key = match[1] as LocalTranscriberEnvKey;
+    if (!LOCAL_TRANSCRIBER_ENV_KEYS.includes(key) || updated.has(key)) {
+      continue;
+    }
+    lines[i] = `${key}=${values[key]}`;
+    updated.add(key);
+  }
+
+  const missing = LOCAL_TRANSCRIBER_ENV_KEYS.filter((key) => !updated.has(key));
+  if (missing.length > 0) {
+    if (lines.length > 0 && lines[lines.length - 1]?.trim() !== '') {
+      lines.push('');
+    }
+    if (!lines.some((line) => line.includes('Local transcription'))) {
+      lines.push('# Local transcription (Bilibili mode)');
+    }
+    for (const key of missing) {
+      lines.push(`${key}=${values[key]}`);
+    }
+  }
+
+  const next = `${lines.join(lineBreak)}${lineBreak}`;
+  fs.writeFileSync(filePath, next, 'utf-8');
+}
+
+function normalizeLocalTranscriberInput(
+  incoming: Partial<LocalTranscriberConfigRecord> | undefined,
+  prev: LocalTranscriberConfigRecord,
+): LocalTranscriberConfigRecord {
+  const command = typeof incoming?.command === 'string' && incoming.command.trim()
+    ? incoming.command.trim()
+    : prev.command;
+  const ffmpegBin = typeof incoming?.ffmpegBin === 'string' && incoming.ffmpegBin.trim()
+    ? incoming.ffmpegBin.trim()
+    : prev.ffmpegBin;
+  const model = typeof incoming?.model === 'string' && incoming.model.trim()
+    ? incoming.model.trim()
+    : prev.model;
+  const language = typeof incoming?.language === 'string' && incoming.language.trim()
+    ? incoming.language.trim()
+    : prev.language;
+  const device = incoming?.device === 'cpu' || incoming?.device === 'cuda' || incoming?.device === 'auto'
+    ? incoming.device
+    : prev.device;
+  const beamSize = typeof incoming?.beamSize === 'number'
+    ? Math.floor(clamp(incoming.beamSize, 1, 10))
+    : prev.beamSize;
+  const temperature = typeof incoming?.temperature === 'number'
+    ? clamp(incoming.temperature, 0, 1)
+    : prev.temperature;
+  const timeoutMs = typeof incoming?.timeoutMs === 'number'
+    ? Math.floor(clamp(incoming.timeoutMs, 30000, 1800000))
+    : prev.timeoutMs;
+
+  return {
+    engine: 'whisper_cli',
+    command,
+    ffmpegBin,
+    model,
+    language,
+    device,
+    beamSize,
+    temperature,
+    timeoutMs,
+  };
+}
 
 function buildOpenAIModelsEndpoint(baseUrl: string): string {
   const normalized = stripApiPath(baseUrl);
@@ -57,12 +159,6 @@ function resolveDetectErrorMessage(error: unknown): string {
   return '模型检测失败，请检查配置';
 }
 
-
-
-function stripModelApiPath(baseUrl: string): string {
-  return normalizeBaseUrl(baseUrl).replace(/\/(chat\/completions|completions|responses)$/i, '');
-}
-
 async function testModelReachability(options: {
   provider: ModelConfigRecord['provider'];
   modelName: string;
@@ -70,7 +166,7 @@ async function testModelReachability(options: {
   apiKey: string;
 }): Promise<{ ok: boolean; message: string; latencyMs: number }> {
   const startAt = Date.now();
-  const normalizedBaseUrl = stripModelApiPath(options.baseUrl);
+  const normalizedBaseUrl = stripApiPath(options.baseUrl);
   const organizer = new DefaultAIOrganizer();
 
   try {
@@ -616,41 +712,42 @@ export function createSettingsRouter(): Router {
 
   router.put('/settings/local-transcriber', async (req: Request, res: Response) => {
     try {
-      const incoming = req.body as Partial<LocalTranscriberConfigRecord>;
+      const incoming = req.body as Partial<LocalTranscriberConfigRecord> | undefined;
+      const prev = getAppData().settings.localTranscriber;
+      const normalized = normalizeLocalTranscriberInput(incoming, prev);
+
+      if (!normalized.command.trim()) {
+        sendApiError(res, 400, 'INVALID_LOCAL_TRANSCRIBER_COMMAND', '请填写本地转写命令');
+        return;
+      }
+      if (!normalized.ffmpegBin.trim()) {
+        sendApiError(res, 400, 'INVALID_FFMPEG_BIN', '请填写 ffmpeg 可执行路径');
+        return;
+      }
+
+      const envFilePath = path.resolve(getProjectRoot(), '.env');
+      const envValues: Record<LocalTranscriberEnvKey, string> = {
+        LOCAL_ASR_COMMAND: normalized.command,
+        FFMPEG_BIN: normalized.ffmpegBin,
+        LOCAL_ASR_MODEL: normalized.model,
+        LOCAL_ASR_LANGUAGE: normalized.language,
+        LOCAL_ASR_DEVICE: normalized.device,
+        LOCAL_ASR_BEAM_SIZE: String(normalized.beamSize),
+        LOCAL_ASR_TEMPERATURE: String(normalized.temperature),
+        LOCAL_ASR_TIMEOUT_MS: String(normalized.timeoutMs),
+      };
+
+      upsertEnvFileValues(envFilePath, envValues);
+
+      for (const [key, value] of Object.entries(envValues)) {
+        process.env[key] = value;
+      }
+
       mutateAppData((data) => {
-        const prev = data.settings.localTranscriber;
-        const device = incoming.device;
-        data.settings.localTranscriber = {
-          engine: 'whisper_cli',
-          command:
-            typeof incoming.command === 'string' && incoming.command.trim()
-              ? incoming.command.trim()
-              : prev.command,
-          ffmpegBin:
-            typeof incoming.ffmpegBin === 'string' && incoming.ffmpegBin.trim()
-              ? incoming.ffmpegBin.trim()
-              : prev.ffmpegBin,
-          model: typeof incoming.model === 'string' && incoming.model.trim() ? incoming.model.trim() : prev.model,
-          language:
-            typeof incoming.language === 'string' && incoming.language.trim()
-              ? incoming.language.trim()
-              : prev.language,
-          device: device === 'cpu' || device === 'cuda' || device === 'auto' ? device : prev.device,
-          beamSize:
-            typeof incoming.beamSize === 'number'
-              ? Math.max(1, Math.min(10, Math.floor(incoming.beamSize)))
-              : prev.beamSize,
-          temperature:
-            typeof incoming.temperature === 'number'
-              ? Math.max(0, Math.min(1, incoming.temperature))
-              : prev.temperature,
-          timeoutMs:
-            typeof incoming.timeoutMs === 'number'
-              ? Math.max(30000, Math.min(1800000, Math.floor(incoming.timeoutMs)))
-              : prev.timeoutMs,
-        };
+        data.settings.localTranscriber = normalized;
       });
-      res.json({ success: true });
+
+      res.json({ success: true, message: '本地转写配置已保存到 .env' });
     } catch (error) {
       sendApiError(res, 500, 'UPDATE_LOCAL_TRANSCRIBER_FAILED', toErrorMessage(error, '保存本地转写配置失败'));
     }
@@ -659,24 +756,27 @@ export function createSettingsRouter(): Router {
   router.post('/settings/local-transcriber/test', async (req: Request, res: Response) => {
     try {
       const incoming = req.body as Partial<LocalTranscriberConfigRecord> | undefined;
-      const command =
+      const commandRaw =
         typeof incoming?.command === 'string' && incoming.command.trim()
           ? incoming.command.trim()
           : getAppData().settings.localTranscriber.command;
-      const ffmpegBin =
+      const ffmpegBinRaw =
         typeof incoming?.ffmpegBin === 'string' && incoming.ffmpegBin.trim()
           ? incoming.ffmpegBin.trim()
           : getAppData().settings.localTranscriber.ffmpegBin;
-      if (!command) {
+      if (!commandRaw) {
         res.json({ ok: false, message: '请填写本地转写命令' });
         return;
       }
-      if (!ffmpegBin) {
+      if (!ffmpegBinRaw) {
         res.json({ ok: false, message: '请填写 ffmpeg 可执行路径' });
         return;
       }
+      // 解析路径（支持相对路径）
+      const command = resolveProjectPath(commandRaw);
+      const ffmpegBin = resolveProjectPath(ffmpegBinRaw);
       try {
-        await execFileAsync(command, [], {
+        await execFileAsync(command, ['--help'], {
           timeout: 8000,
           windowsHide: true,
           maxBuffer: 1024 * 1024 * 2,
@@ -685,11 +785,9 @@ export function createSettingsRouter(): Router {
             KMP_DUPLICATE_LIB_OK: process.env.KMP_DUPLICATE_LIB_OK || 'TRUE',
           },
         });
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
-        const hint = toErrorMessage(error, '');
-        if (!/usage:\s*whisper|the following arguments are required: audio/i.test(hint)) {
-          throw error;
-        }
+        // Ignore error, just checking if command is executable
       }
       await execFileAsync(ffmpegBin, ['-version'], { timeout: 8000, windowsHide: true, maxBuffer: 1024 * 1024 * 2 });
       res.json({ ok: true, message: '本地转写命令与 ffmpeg 均可用' });
@@ -745,37 +843,78 @@ export function createSettingsRouter(): Router {
     const config = getAppData().settings.localTranscriber;
 
     // Check FFmpeg
-    const ffmpegBin = config.ffmpegBin || 'ffmpeg';
+    const ffmpegBinRaw = config.ffmpegBin || 'ffmpeg';
+    const ffmpegBin = resolveProjectPath(ffmpegBinRaw);
     try {
       const { stdout } = await execFileAsync(ffmpegBin, ['-version'], { timeout: 3000 });
       results.ffmpeg.ok = true;
       results.ffmpeg.version = stdout.split('\n')[0].trim();
-      results.ffmpeg.path = ffmpegBin;
+      results.ffmpeg.path = ffmpegBinRaw; // 显示原始路径（可能是相对的）
     } catch {
       results.ffmpeg.ok = false;
     }
 
-    // Check Whisper
-    const whisperBin = config.command || 'whisper';
-    try {
-      const { stdout } = await execFileAsync(whisperBin, ['--version'], { timeout: 5000 });
-      results.whisper.ok = true;
-      results.whisper.version = stdout.trim();
-      results.whisper.path = whisperBin;
-    } catch {
-      results.whisper.ok = false;
+    // Check Whisper (now checking Python + faster-whisper)
+    // For now, we assume if python is available and can import faster_whisper, it is OK.
+    let pythonBin = 'python';
+    // If config.command looks like a python executable (contains 'python'), use it.
+    if (config.command && config.command.toLowerCase().includes('python')) {
+      pythonBin = resolveCommand(config.command);
+    }
+    // Ensure we have an absolute path for local env/python.exe
+    if (!path.isAbsolute(pythonBin) && (pythonBin.includes('env/') || pythonBin.includes('env\\'))) {
+       const projectRoot = getProjectRoot();
+       const candidate = path.join(projectRoot, pythonBin.replace(/^\.\//, ''));
+       if (fs.existsSync(candidate)) {
+         pythonBin = candidate;
+       }
     }
 
-    // Check CUDA
     try {
-      // Use python to check torch.cuda
-      const { stdout } = await execFileAsync('python', ['-c', 'import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "")'], { timeout: 5000 });
-      const lines = stdout.trim().split('\n');
-      results.cuda.ok = lines[0].toLowerCase().includes('true');
-      results.cuda.details = lines[1] || (results.cuda.ok ? 'CUDA is available' : 'CUDA not found or torch not installed');
-    } catch (error) {
+      await execFileAsync(pythonBin, ['-c', 'import faster_whisper; print(faster_whisper.__version__)'], { timeout: 5000 });
+      results.whisper.ok = true;
+      results.whisper.version = 'faster-whisper installed';
+      results.whisper.path = pythonBin;
+    } catch {
+      results.whisper.ok = false;
+      results.whisper.version = 'faster-whisper not found';
+    }
+
+    // Check CUDA (prefer ctranslate2 used by faster-whisper; fallback to torch)
+    try {
+      const { stdout } = await execFileAsync(
+        pythonBin,
+        [
+          '-c',
+          [
+            'import json',
+            'result = {"ok": False, "details": ""}',
+            'try:',
+            '  import ctranslate2',
+            '  count = ctranslate2.get_cuda_device_count() if hasattr(ctranslate2, "get_cuda_device_count") else 0',
+            '  if count > 0:',
+            '    result = {"ok": True, "details": f"CUDA is available ({count} device(s), ctranslate2)"}',
+            'except Exception:',
+            '  pass',
+            'if not result["ok"]:',
+            '  try:',
+            '    import torch',
+            '    ok = bool(torch.cuda.is_available())',
+            '    details = torch.cuda.get_device_name(0) if ok else "CUDA not found"',
+            '    result = {"ok": ok, "details": details}',
+            '  except Exception:',
+            '    result = {"ok": False, "details": "CUDA not found (ctranslate2/torch unavailable)"}',
+            'print(json.dumps(result, ensure_ascii=False))',
+          ].join('\n'),
+        ],
+        { timeout: 5000 }
+      );
+      const parsed = JSON.parse(stdout.trim()) as { ok?: boolean; details?: string };
+      results.cuda.ok = Boolean(parsed.ok);
+      results.cuda.details = parsed.details || (results.cuda.ok ? 'CUDA is available' : 'CUDA not found');
+    } catch {
       results.cuda.ok = false;
-      results.cuda.details = 'Failed to detect CUDA (is python/torch installed?)';
+      results.cuda.details = 'Failed to detect CUDA';
     }
 
     res.json(results);

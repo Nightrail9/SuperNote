@@ -31,6 +31,7 @@ import {
 } from './keyframe-selector.js';
 import { createLocalTranscriber, toTranscriptMarkdown, type LocalTranscriber } from './local-transcriber.js';
 import { logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
+import { getErrorMessage } from '../utils/http-error.js';
 
 /** 流水线配置 */
 export interface SummaryPipelineConfig {
@@ -158,7 +159,7 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
         }
         videoInfo = parsed;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         logDiagnosticError('summary-pipeline', 'parse_failed', error, { url });
         return this.createError('parse', 'PARSE_FAILED', message);
       }
@@ -178,7 +179,7 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
           signal: options?.signal,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         logDiagnosticError('summary-pipeline', 'download_failed', error, {
           url,
           tempFilePath,
@@ -209,7 +210,7 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
             url,
             timeoutMs: this.config.videoUnderstanding.timeoutMs,
           });
-          warnings.push(`KEYFRAME_WARN_STAGE_TIMEOUT_OR_FAILED:${error instanceof Error ? error.message : String(error)}`);
+          warnings.push(`KEYFRAME_WARN_STAGE_TIMEOUT_OR_FAILED:${getErrorMessage(error)}`);
         }
       }
 
@@ -228,7 +229,7 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
           }
         transcriptMarkdown = toTranscriptMarkdown(displayTitle, transcript);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         logDiagnosticError('summary-pipeline', 'local_transcribe_failed', error, {
           url,
           tempFilePath,
@@ -254,7 +255,7 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
       try {
         markdown = transcriptMarkdown;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         return this.createError('generate', 'GENERATE_FAILED', message);
       }
 
@@ -293,7 +294,7 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
         }
         summary = aiResult.content ?? '';
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         logDiagnosticError('summary-pipeline', 'ai_call_failed', error, { url });
         return this.createError('ai_call', 'AI_ERROR', message);
       }

@@ -1,18 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { getProjectRoot, resolveProjectPath } from './path-resolver.js';
 
 // ============================================================================
 // FFmpeg 路径解析工具
 // ============================================================================
 // 基于项目根目录解析 FFmpeg 可执行文件路径，不依赖当前工作目录(CWD)
 
-// 获取当前文件所在目录（ES Module 兼容方式）
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// 项目根目录（相对于 apps/server/utils/ -> ../../../）
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
+// 项目根目录
+const PROJECT_ROOT = getProjectRoot();
 
 // 内置 FFmpeg 目录
 const BUNDLED_FFMPEG_DIR = path.join(PROJECT_ROOT, 'tools', 'ffmpeg', 'bin');
@@ -55,12 +52,12 @@ function getExecutableExt(): string {
 export function resolveFfmpegBin(userConfigPath?: string): string {
   // 1. 用户配置的路径
   if (userConfigPath?.trim()) {
-    return path.resolve(userConfigPath.trim());
+    return resolveProjectPath(userConfigPath.trim());
   }
 
   // 2. 环境变量
   if (process.env.FFMPEG_BIN?.trim()) {
-    return path.resolve(process.env.FFMPEG_BIN.trim());
+    return resolveProjectPath(process.env.FFMPEG_BIN.trim());
   }
 
   // 3. 内置 FFmpeg（基于项目根目录）
@@ -94,12 +91,12 @@ export function resolveFfmpegBin(userConfigPath?: string): string {
 export function resolveFfprobeBin(userConfigPath?: string): string {
   // 1. 用户配置的路径
   if (userConfigPath?.trim()) {
-    return path.resolve(userConfigPath.trim());
+    return resolveProjectPath(userConfigPath.trim());
   }
 
   // 2. 环境变量
   if (process.env.FFPROBE_BIN?.trim()) {
-    return path.resolve(process.env.FFPROBE_BIN.trim());
+    return resolveProjectPath(process.env.FFPROBE_BIN.trim());
   }
 
   // 3. 尝试从 FFmpeg 路径推断 ffprobe 路径

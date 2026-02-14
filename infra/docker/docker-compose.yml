@@ -1,13 +1,13 @@
 services:
   supernote:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
     container_name: supernote
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - ../../.env
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -17,8 +17,8 @@ services:
       LOCAL_ASR_MODEL: base
       LOCAL_ASR_FFMPEG_PATH: ffmpeg
     volumes:
-      - ./storage/data:/app/storage/data
-      - ./storage/temp:/app/storage/temp
+      - ../../storage/data:/app/storage/data
+      - ../../storage/temp:/app/storage/temp
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/settings/env-check"]

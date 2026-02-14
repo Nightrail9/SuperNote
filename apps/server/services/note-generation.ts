@@ -15,6 +15,7 @@ import {
   type PromptConfigRecord,
   type TaskRecord,
 } from './app-data-store.js';
+import { BILIBILI_URL_PATTERN } from '../constants/index.js';
 
 type GenerationOptions = {
   sourceUrl: string;
@@ -41,9 +42,6 @@ class TaskFailureError extends Error {
     this.patch = patch;
   }
 }
-
-const BILIBILI_URL_PATTERN =
-  /^https?:\/\/(?:(?:www\.|m\.)?bilibili\.com\/video\/(?:BV[a-zA-Z0-9]+|av\d+)|b23\.tv\/[a-zA-Z0-9]+)/i;
 
 function splitAndDedupeUrls(sourceUrl: string): string[] {
   return Array.from(
@@ -264,6 +262,7 @@ async function runAiStage(
   keyframeWarnings: string[],
   keyframeStats: Array<NonNullable<NonNullable<TaskRecord['debug']>['keyframeStats']>[number]>,
 ): Promise<{ success: boolean; resultMd?: string }> {
+  const resolvedTimeoutMs = resolveAiTimeoutMs(model.timeoutMs, mergedMarkdown.length);
   throwIfCancelled(taskId, signal);
   setRunningStage(taskId, 'generate');
   updateTaskProgress(taskId, {
@@ -283,7 +282,7 @@ async function runAiStage(
     modelId: model.id,
     provider: model.provider,
     modelName: model.modelName,
-    timeoutMs: model.timeoutMs,
+    timeoutMs: resolvedTimeoutMs,
     mergedMarkdownLength: mergedMarkdown.length,
     promptLength: effectivePrompt.length,
   });
@@ -295,7 +294,7 @@ async function runAiStage(
     provider: model.provider,
     modelName: model.modelName,
     prompt: effectivePrompt,
-    timeoutMs: model.timeoutMs,
+    timeoutMs: resolvedTimeoutMs,
     abortSignal: signal,
   });
 
@@ -328,6 +327,24 @@ async function runAiStage(
 
   const resultMd = (aiResult.content ?? '').trim() || mergedMarkdown;
   return { success: true, resultMd };
+}
+
+function resolveAiTimeoutMs(modelTimeoutMs: number | undefined, markdownLength: number): number {
+  const baseTimeoutMs =
+    typeof modelTimeoutMs === 'number' && Number.isFinite(modelTimeoutMs)
+      ? Math.max(15000, Math.min(600000, Math.floor(modelTimeoutMs)))
+      : 60000;
+
+  if (markdownLength >= 30000) {
+    return Math.max(baseTimeoutMs, 240000);
+  }
+  if (markdownLength >= 12000) {
+    return Math.max(baseTimeoutMs, 180000);
+  }
+  if (markdownLength >= 6000) {
+    return Math.max(baseTimeoutMs, 120000);
+  }
+  return baseTimeoutMs;
 }
 
 async function runTask(taskId: string, options: GenerationOptions): Promise<void> {
