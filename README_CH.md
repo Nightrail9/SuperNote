@@ -1,130 +1,224 @@
 # SuperNote
 
-中文说明 | [English](./README.md)
+[English Documentation](./README.md)
 
-SuperNote 是一个本地优先的笔记生成工具，支持：
-- B 站视频（本地转写 + 关键帧）
-- 网页链接（Jina Reader）
+SuperNote 是一个本地优先的笔记生成工具，支持 B 站视频和网页链接。它可以提取音频、使用 OpenAI Whisper 进行语音转文字、捕获关键帧，并生成结构化的笔记。
 
-项目包含：
-- Node.js 后端 API
-- Vue 3 前端
+## 功能特性
 
-## 环境要求
+- **B 站视频笔记**：提取音频、Whisper 语音转写、捕获关键帧、AI 智能组织
+- **网页链接笔记**：使用 Jina Reader 提取和总结网页内容
+- **本地优先**：所有数据本地存储，注重隐私
+- **现代技术栈**：Node.js + Express 后端，Vue 3 + TypeScript 前端
+- **Docker 支持**：一条命令即可部署
 
-- Node.js 18+
-- npm 9+
-- Python 3.10+（用于 Whisper）
-- FFmpeg
+## 快速开始
 
-说明：
-- 仓库可直接使用内置 FFmpeg：`tools/ffmpeg/bin/ffmpeg.exe`（Windows）。
+### 方式一：Docker（推荐）
 
-## 安装
+最简单的运行方式，已包含所有依赖（Node.js、Python、Whisper、FFmpeg）。
 
-详细的安装步骤（包括 **FFmpeg** 安装与 **CUDA/GPU 加速** 配置），请参考：[安装指南 (INSTALL_CH.md)](./INSTALL_CH.md)。
+#### Windows（使用 Docker Desktop）
 
-**Windows 用户快速安装**：双击运行 `setup.bat` 即可自动安装依赖。
+```powershell
+# 克隆仓库
+git clone https://github.com/YOUR_USERNAME/SuperNote.git
+cd SuperNote
 
-**Linux 用户快速启动**：运行 `chmod +x start.sh && ./start.sh`。
+# 使用 Docker Compose 启动
+docker-compose up -d
 
-快速开始（手动）：
+# 访问应用
+# 在浏览器中打开 http://localhost:3000
+```
+
+#### Linux（Ubuntu/Debian）
 
 ```bash
+# 克隆仓库
+git clone https://github.com/YOUR_USERNAME/SuperNote.git
+cd SuperNote
+
+# 使用 Docker Compose 启动
+sudo docker-compose up -d
+
+# 或者不使用 sudo（如果用户在 docker 组中）
+docker-compose up -d
+
+# 访问应用
+# 在浏览器中打开 http://localhost:3000
+```
+
+#### 查看日志
+
+```bash
+docker-compose logs -f supernote
+```
+
+#### 停止应用
+
+```bash
+docker-compose down
+```
+
+### 方式二：手动安装
+
+如果你不想使用 Docker，需要安装以下依赖：
+
+#### 环境要求
+
+- **Node.js** 18+ 和 npm 9+
+- **Python** 3.10+（用于 Whisper）
+- **FFmpeg**（用于音视频处理）
+- **Whisper**：`pip install openai-whisper`
+
+#### Windows
+
+```powershell
 # 安装后端依赖
 npm install
 
 # 安装前端依赖
 cd apps/web
 npm install
+cd ../..
 
-# 安装 Whisper
-pip install -U openai-whisper
-```
-
-## 开发运行
-
-启动后端（项目根目录）：
-
-```bash
+# 启动后端
 npm run dev
-```
 
-启动前端（新开终端）：
-
-```bash
+# 在另一个终端启动前端
 cd apps/web
 npm run dev
 ```
 
-默认地址：
-- 后端：`http://localhost:3000`
-- 前端：以终端输出为准（Vite）
+#### Linux
+
+```bash
+# 安装系统依赖
+sudo apt update
+sudo apt install -y ffmpeg python3 python3-pip
+
+# 安装 Whisper
+pip3 install openai-whisper
+
+# 安装后端依赖
+npm install
+
+# 安装前端依赖
+cd apps/web && npm install && cd ../..
+
+# 赋予启动脚本执行权限
+chmod +x start.sh
+
+# 启动应用
+./start.sh
+```
 
 ## 首次配置
 
-进入前端：`系统配置 -> 本地引擎与集成`
-
-1. **本地转写引擎**
-   - `命令`：whisper 可执行路径，例如 `D:\ProgramSoftware\Conda\Scripts\whisper.exe`
-   - `ffmpeg 路径`：`tools/ffmpeg/bin/ffmpeg.exe`（或系统已安装 ffmpeg）
-   - 模型建议：
-     - 速度优先：`base`
-     - 效果均衡：`small`
-2. 点击 **测试命令**，确保 whisper 与 ffmpeg 均可用。
-3. 保存配置。
+1. 在浏览器中打开 `http://localhost:3000`
+2. 点击右上角设置图标 → **本地引擎与集成**
+3. 配置本地转写引擎：
+   - **命令**：`whisper`（Docker）或 whisper 可执行文件的完整路径
+   - **FFmpeg 路径**：`ffmpeg`（Docker）或完整路径
+   - **模型**：`base`（Docker 推荐），`small` 效果更好
+   - **计算设备**：`cpu`（Docker），如有 GPU 可选 `cuda`
+4. 点击 **测试命令** 验证配置
+5. 保存设置
 
 ## 使用方法
 
-### B站链接生成笔记
+### B 站视频生成笔记
 
-1. 进入 `创作 -> B站链接生成笔记`
-2. 粘贴一个或多个 B 站链接
-3. 提交任务并等待完成
-4. 生成后可保存为草稿或笔记
+1. 进入 **创作 → B 站链接生成笔记**
+2. 粘贴一个或多个 B 站视频链接
+3. 点击提交，等待处理完成
+4. 保存为草稿或笔记
 
 ### 网页链接生成笔记
 
-1. 进入 `创作 -> 网页链接生成笔记`
-2. 粘贴一个或多个 http/https 链接
-3. 提交任务
+1. 进入 **创作 → 网页链接生成笔记**
+2. 粘贴一个或多个网页链接
+3. 点击提交
 
-## 可选环境变量
+## 环境变量
 
-按需创建 `.env`：
+从 `.env.example` 创建 `.env` 文件：
 
 ```bash
 cp .env.example .env
 ```
 
-常用配置：
-- `PORT`
-- `SESSDATA`（可选，可提升部分 B 站视频可访问性）
-- `JINA_READER_ENDPOINT`、`JINA_API_KEY`
-- `LOCAL_ASR_*`
+关键变量：
 
-## 构建
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `PORT` | 服务端口 | `3000` |
+| `SESSDATA` | B 站登录 Cookie（可选） | - |
+| `JINA_API_KEY` | Jina Reader API 密钥（可选） | - |
+| `LOCAL_ASR_COMMAND` | Whisper 命令 | `whisper` |
+| `LOCAL_ASR_MODEL` | Whisper 模型 | `base` |
+| `LOCAL_ASR_DEVICE` | 计算设备 | `cpu` |
 
-后端构建：
+## 开发
 
 ```bash
+# 类型检查
+npm run typecheck
+
+# 构建后端
 npm run build
+
+# 清理构建
+npm run clean
 ```
 
-前端构建：
+## 项目结构
 
-```bash
-cd apps/web
-npm run build
+```
+.
+├── apps/
+│   ├── server/          # Express.js API 服务器
+│   └── web/             # Vue 3 前端
+├── packages/
+│   └── parser-core/     # B 站解析器库
+├── storage/             # 数据存储（自动创建）
+├── Dockerfile           # Docker 镜像定义
+└── docker-compose.yml   # Docker Compose 配置
 ```
 
 ## 常见问题
 
-- `spawn ffmpeg ENOENT`
-  - 在配置页填写正确的 ffmpeg 可执行路径。
-- `spawn whisper ENOENT`
-  - 安装 whisper，并将命令配置为绝对路径。
-- `local transcribe timeout`
-  - 调大本地转写超时，或改用更小模型。
-- 前端提示接口返回 HTML
-  - 检查 `VITE_API_BASE_URL`，建议使用 `/api`。
+### Docker：容器无法启动
+
+```bash
+# 查看日志
+docker-compose logs supernote
+
+# 重新构建镜像
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### 找不到 Whisper
+
+Docker：已内置。手动安装：确保 whisper 在 PATH 中，或在设置中提供完整路径。
+
+### 找不到 FFmpeg
+
+Docker：已内置。手动安装：安装 FFmpeg 并在设置中配置路径。
+
+### 转写超时
+
+- 使用更小的模型（`base` 或 `tiny`）
+- 在设置中增加超时时间
+- 确保系统资源充足
+
+## 开源协议
+
+MIT
+
+## 支持
+
+如有问题或功能建议，请使用 [GitHub Issues](https://github.com/YOUR_USERNAME/SuperNote/issues)。

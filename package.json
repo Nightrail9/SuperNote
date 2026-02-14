@@ -1,7 +1,7 @@
 {
-  "name": "bilibili-video-parser",
+"name": "supernote",
   "version": "1.0.0",
-  "description": "Bilibili video link parser - converts various Bilibili URL formats to playable stream URLs",
+  "description": "SuperNote - Local-first note generator for Bilibili videos and web pages",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
