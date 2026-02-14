@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Link, Download, Microphone, MagicStick, Check, Loading } from '@element-plus/icons-vue'
 import { api } from '../../api/modules'
 import PageBlock from '../../components/PageBlock.vue'
 import { buildMarkdownName, downloadMarkdownFile } from '../../utils/markdown'
@@ -113,6 +114,38 @@ const stageLabelMap: Record<string, string> = {
 }
 
 const keyframeWarningCount = computed(() => task.value?.debug?.keyframeWarnings?.length ?? 0)
+
+const steps = [
+  { title: '解析', description: '解析视频/网页', icon: Link },
+  { title: '获取', description: '下载内容', icon: Download },
+  { title: '处理', description: '转录/提取', icon: Microphone },
+  { title: '生成', description: 'AI 整理', icon: MagicStick },
+]
+
+const currentStep = computed(() => {
+  const s = (task.value?.stage ?? '').toLowerCase()
+  if (doneTaskStates.has(s)) return 4
+  if (failedTaskStates.has(s) || cancelledTaskStates.has(s)) return -1
+
+  switch (s) {
+    case 'pending':
+    case 'validate':
+    case 'parse':
+      return 0
+    case 'download':
+    case 'extract_frames':
+    case 'crawl':
+      return 1
+    case 'local_transcribe':
+    case 'transcribe':
+      return 2
+    case 'merge':
+    case 'generate':
+      return 3
+    default:
+      return 0
+  }
+})
 
 const progressValue = computed(() => {
   const raw = Number(task.value?.progress)
@@ -418,11 +451,27 @@ onBeforeUnmount(() => {
       </el-space>
 
       <div v-if="taskStatus === 'generating'" class="task-progress-panel">
-        <div class="task-progress-meta">
-          <el-text>{{ progressStageLabel }}</el-text>
-          <el-text type="info">{{ progressValue }}%</el-text>
+        <el-steps :active="currentStep" finish-status="success" align-center style="margin-bottom: var(--space-8)">
+          <el-step v-for="(step, index) in steps" :key="index" :title="step.title" :description="step.description">
+            <template #icon>
+              <el-icon v-if="index === currentStep" class="is-loading"><Loading /></el-icon>
+              <component :is="step.icon" v-else />
+            </template>
+          </el-step>
+        </el-steps>
+
+        <div class="progress-info-row" style="display: flex; justify-content: space-between; margin-bottom: var(--space-2)">
+           <el-text type="info" size="small">{{ progressMessage }}</el-text>
+           <el-text type="primary" size="small" style="font-family: monospace">{{ progressValue }}%</el-text>
         </div>
-        <el-progress :percentage="progressValue" :stroke-width="10" :show-text="false" />
+        <el-progress 
+          :percentage="progressValue" 
+          :stroke-width="12" 
+          :show-text="false" 
+          striped 
+          striped-flow 
+          :duration="10"
+        />
       </div>
 
       <template v-if="canOperate">
@@ -465,5 +514,20 @@ onBeforeUnmount(() => {
 <style scoped>
 .generate-task-toolbar {
   position: static;
+}
+
+.task-progress-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  margin-top: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
