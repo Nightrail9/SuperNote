@@ -1,54 +1,75 @@
 # SuperNote
 
-[中文文档](./README_CH.md)
+AI 视频笔记生成工具，让 AI 为 B 站和网页内容自动生成结构化 Markdown 笔记。
 
-SuperNote is a local-first note generator for Bilibili links and web pages. It combines local transcription, URL parsing, and AI structuring to produce editable notes and drafts.
+## 项目简介
 
-## Quick Install (Recommended)
+SuperNote 是一个本地优先的笔记生成应用，支持从链接解析、内容提取、转写到总结生成的完整流程，输出可编辑的笔记与草稿。
 
-### 1) Prepare runtime
+## 功能特性
+
+- 支持 B 站链接与网页链接两类输入
+- 支持任务进度跟踪、历史任务回看
+- 支持草稿管理、笔记管理与设置管理
+- 支持本地转写（faster-whisper）与多模型配置
+- 支持按格式生成结构化 Markdown 笔记
+
+## 截图预览
+
+![笔记](images/笔记.png)
+![草稿箱](images/草稿箱.png)
+![网页链接生成笔记](images/网页链接生成笔记.png)
+![网页生成任务](images/网页生成任务.png)
+![网页生成中](images/网页生成中.png)
+![B站链接生成笔记](images/B站链接生成笔记.png)
+![B站生成任务](images/B站生成任务.png)
+![B站生成中](images/B站生成中.png)
+
+## 快速开始
+
+### 1. 环境要求
 
 - Node.js `>= 18`
 - npm `>= 9`
 - Python `>= 3.10`
-- FFmpeg available in PATH (or `tools/ffmpeg/bin`)
+- FFmpeg（系统 PATH 或 `tools/ffmpeg/bin`）
 
-### 2) Install dependencies
+### 2. 安装依赖
 
-Run in project root:
+在项目根目录执行：
 
 ```bash
 npm install
 npm --prefix apps/web install
 ```
 
-### 3) Create env file
+### 3. 配置环境变量
 
 ```bash
 cp .env.example .env
 ```
 
-Windows PowerShell:
+Windows PowerShell：
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-### 4) Start services (local dev)
+### 4. 启动服务
 
-Backend:
+后端：
 
 ```bash
 npm run dev
 ```
 
-Frontend:
+前端：
 
 ```bash
 npm run dev:web
 ```
 
-Or use wrapper scripts:
+也可使用一键脚本：
 
 ```bat
 start.bat
@@ -58,83 +79,27 @@ start.bat
 ./start.sh
 ```
 
-## Docker Install and Deployment
+## Docker 部署
 
-Docker files live in `infra/docker/`.
-
-### 1) Prepare env file
-
-```bash
-cp .env.example .env
-```
-
-### 2) Validate compose
+Docker 入口位于 `infra/docker/`。
 
 ```bash
 npm run docker:config
-```
-
-### 3) Build and run
-
-```bash
 npm run docker:up
 ```
 
-Equivalent command:
+等价命令：
 
 ```bash
 docker compose -f infra/docker/docker-compose.yml up -d
 ```
 
-### 4) Verify installation
+启动后访问：
 
-- App: `http://localhost:3000`
-- Health: `http://localhost:3000/health`
+- 应用地址：`http://localhost:3000`
+- 健康检查：`http://localhost:3000/health`
 
-## Common Install Issues (Windows/Linux)
-
-- `npm install` fails with SSL/network errors: switch to a stable npm registry, then retry.
-- Python/Whisper command not found: confirm Python `>=3.10` is installed and available in PATH.
-- FFmpeg not found: install FFmpeg and verify `ffmpeg -version` works in your terminal.
-- Port already in use (`3000`/`3001`): stop the conflicting process, or start with a different `PORT`.
-- Docker starts but app is unhealthy: run `docker compose -f infra/docker/docker-compose.yml logs -f` and confirm `.env` exists.
-- Linux permission issue on `storage/`: run `mkdir -p storage/data storage/temp storage/public` and ensure current user can write.
-
-## Screenshots
-
-### Note view
-
-![Note](images/笔记.png)
-
-### Drafts
-
-![Drafts](images/草稿箱.png)
-
-### Web link -> note
-
-![Web note](images/网页链接生成笔记.png)
-
-### Web task list
-
-![Web task](images/网页生成任务.png)
-
-### Web generation in progress
-
-![Web generating](images/网页生成中.png)
-
-### Bilibili link -> note
-
-![Bilibili note](images/B站链接生成笔记.png)
-
-### Bilibili task list
-
-![Bilibili task](images/B站生成任务.png)
-
-### Bilibili generation in progress
-
-![Bilibili generating](images/B站生成中.png)
-
-## Common Commands
+## 常用命令
 
 ```bash
 npm run build
@@ -143,13 +108,19 @@ npm run typecheck
 npm run test:server:all
 ```
 
-## Runtime Data
+## 常见问题
 
-- `storage/data`: persisted data
-- `storage/temp`: temporary processing files
-- `storage/public`: generated static assets
+- `npm install` 网络或 SSL 错误：切换可用 npm 源后重试。
+- 找不到 Python/Whisper：确认 Python 已安装并加入 PATH。
+- 找不到 FFmpeg：安装后执行 `ffmpeg -version` 验证。
+- 端口冲突（`3000`/`3001`）：结束占用进程或修改端口。
+- Docker 启动异常：执行 `docker compose -f infra/docker/docker-compose.yml logs -f` 查看日志。
 
-Do not commit `.env` secrets or sensitive runtime files.
+## 运行数据目录
+
+- `storage/data`：持久化数据
+- `storage/temp`：临时处理文件
+- `storage/public`：生成的静态资源
 
 ## License
 
