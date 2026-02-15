@@ -37,10 +37,7 @@ const LOCAL_TRANSCRIBER_ENV_KEYS = [
   'LOCAL_ASR_TIMEOUT_MS',
 ] as const;
 
-const MODEL_ENV_KEYS = ['AI_MODELS_JSON', 'AI_DEFAULT_MODEL_ID'] as const;
-
 type LocalTranscriberEnvKey = (typeof LOCAL_TRANSCRIBER_ENV_KEYS)[number];
-type ModelEnvKey = (typeof MODEL_ENV_KEYS)[number];
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -86,30 +83,6 @@ function upsertEnvFileValues<T extends string>(
 
   const next = `${lines.join(lineBreak)}${lineBreak}`;
   fs.writeFileSync(filePath, next, 'utf-8');
-}
-
-function serializeModelsForEnv(models: ModelConfigRecord[]): string {
-  const normalized = models.map((item) => ({
-    id: item.id,
-    provider: item.provider,
-    enabled: Boolean(item.enabled),
-    isDefault: Boolean(item.isDefault),
-    baseUrl: item.baseUrl ?? '',
-    apiKey: item.apiKey ?? '',
-    modelName: item.modelName,
-    timeoutMs: item.timeoutMs ?? 60000,
-  }));
-  return JSON.stringify(normalized);
-}
-
-export function persistModelsToEnvFile(filePath: string, models: ModelConfigRecord[]): Record<ModelEnvKey, string> {
-  const defaultModelId = models.find((item) => item.isDefault)?.id ?? models[0]?.id ?? '';
-  const envValues: Record<ModelEnvKey, string> = {
-    AI_MODELS_JSON: serializeModelsForEnv(models),
-    AI_DEFAULT_MODEL_ID: defaultModelId,
-  };
-  upsertEnvFileValues(filePath, MODEL_ENV_KEYS, envValues);
-  return envValues;
 }
 
 function normalizeLocalTranscriberInput(
@@ -412,13 +385,6 @@ export function createSettingsRouter(): Router {
       const hasDefault = merged.some((item) => item.isDefault);
       if (!hasDefault && merged.length > 0) {
         merged[0].isDefault = true;
-      }
-
-      const envFilePath = path.resolve(getProjectRoot(), '.env');
-      const envValues = persistModelsToEnvFile(envFilePath, merged);
-
-      for (const [key, value] of Object.entries(envValues)) {
-        process.env[key] = value;
       }
 
       mutateAppData((data) => {

@@ -17,8 +17,7 @@ services:
       LOCAL_ASR_MODEL: base
       LOCAL_ASR_FFMPEG_PATH: ffmpeg
     volumes:
-      - ../../storage/data:/app/storage/data
-      - ../../storage/temp:/app/storage/temp
+      - ../../data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/settings/env-check"]

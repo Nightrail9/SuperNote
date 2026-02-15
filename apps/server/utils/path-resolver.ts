@@ -50,41 +50,6 @@ export function resolveProjectPath(inputPath: string): string {
 }
 
 /**
- * 判断路径是否是相对路径
- * @param inputPath 输入路径
- * @returns true 如果是相对路径
- */
-export function isRelativePath(inputPath: string): boolean {
-  if (!inputPath) return false;
-  return !path.isAbsolute(inputPath);
-}
-
-/**
- * 将绝对路径转换为相对于项目根目录的路径
- * 用于保存配置时统一格式
- *
- * @param absolutePath 绝对路径
- * @returns 相对路径（如果可能）或原路径
- */
-export function toRelativePath(absolutePath: string): string {
-  if (!absolutePath || !path.isAbsolute(absolutePath)) {
-    return absolutePath;
-  }
-
-  const projectRoot = getProjectRoot();
-  const relativePath = path.relative(projectRoot, absolutePath);
-
-  // 如果转换后的路径比原路径短，使用相对路径
-  if (relativePath.length < absolutePath.length && !relativePath.startsWith('..')) {
-    // 添加 ./ 前缀，使其更清晰
-    return './' + relativePath.replace(/\\/g, '/');
-  }
-
-  // 路径在项目外部，保持绝对路径
-  return absolutePath;
-}
-
-/**
  * 尝试解析命令的可执行路径
  * 优先查找 PATH，其次查找常见虚拟环境
  */

@@ -361,7 +361,7 @@ export function loadSummaryPipelineConfig(): SummaryPipelineConfig {
 
   const serverConfig = loadConfig();
 
-  const tempDir = path.resolve('storage', 'temp');
+  const tempDir = path.resolve('data', 'temp');
 
   return {
     tempDir,

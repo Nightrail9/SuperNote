@@ -7,9 +7,9 @@ coverage/
 *.tsbuildinfo
 
 # Runtime outputs
-storage/temp/
-storage/data/screenshots/
-storage/public/screenshots/
+data/temp/
+data/screenshots/
+data/public/screenshots/
 temp/
 
 # Legacy path kept locally when files are locked by editor/processes

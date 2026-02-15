@@ -66,8 +66,8 @@ COPY --from=builder /app/apps ./apps
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/requirements.txt ./
 
-# Create storage directories and set permissions
-RUN mkdir -p /app/storage/data /app/storage/temp && \
+# Create runtime data directories and set permissions
+RUN mkdir -p /app/data/temp /app/data/public /app/data/logs && \
     chown -R app:app /app
 
 USER app

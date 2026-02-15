@@ -130,8 +130,9 @@ export type AppData = {
   };
 };
 
-const DATA_DIR = path.resolve('storage', 'data');
+const DATA_DIR = path.resolve('data');
 const DATA_FILE = path.join(DATA_DIR, 'app-data.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'app-settings.json');
 
 let cache: AppData | null = null;
 
@@ -210,35 +211,10 @@ function normalizeModelRecords(input: unknown): ModelConfigRecord[] {
     deduped.push(item);
   }
 
-  const defaultModelId = process.env.AI_DEFAULT_MODEL_ID?.trim();
-  if (defaultModelId) {
-    const hasMatch = deduped.some((item) => item.id === defaultModelId);
-    if (hasMatch) {
-      return deduped.map((item) => ({
-        ...item,
-        isDefault: item.id === defaultModelId,
-      }));
-    }
-  }
-
   if (!deduped.some((item) => item.isDefault)) {
     deduped[0]!.isDefault = true;
   }
   return deduped;
-}
-
-function readModelsFromEnv(): ModelConfigRecord[] {
-  const raw = process.env.AI_MODELS_JSON;
-  if (!raw || !raw.trim()) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    return normalizeModelRecords(parsed);
-  } catch {
-    return [];
-  }
 }
 
 function migrateModelBaseUrls(models: ModelConfigRecord[]): ModelConfigRecord[] {
@@ -317,19 +293,68 @@ function withEnvFallback(value: string | undefined, envValue: string | undefined
   return envValue?.trim() ?? '';
 }
 
-function createDefaultData(): AppData {
+function createDefaultSettings(): AppData['settings'] {
+  return {
+    models: defaultModels(),
+    prompts: defaultPrompts(),
+    integrations: defaultIntegrations(),
+    localTranscriber: defaultLocalTranscriber(),
+    videoUnderstanding: defaultVideoUnderstanding(),
+  };
+}
+
+function createDefaultRuntimeData(): Omit<AppData, 'settings'> {
   return {
     notes: [],
     drafts: [],
     tasks: [],
-    settings: {
-      models: defaultModels(),
-      prompts: defaultPrompts(),
-      integrations: defaultIntegrations(),
-      localTranscriber: defaultLocalTranscriber(),
-      videoUnderstanding: defaultVideoUnderstanding(),
-    },
   };
+}
+
+function normalizeSettings(input: unknown): AppData['settings'] {
+  const parsed = input && typeof input === 'object' ? (input as Partial<AppData['settings']>) : undefined;
+
+  return {
+    models: migrateModelBaseUrls(
+      normalizeModelRecords(Array.isArray(parsed?.models) && parsed.models.length > 0 ? parsed.models : defaultModels())
+    ),
+    prompts: Array.isArray(parsed?.prompts) ? parsed.prompts : defaultPrompts(),
+    integrations: parsed?.integrations
+      ? {
+          jinaReader: {
+            endpoint: normalizeJinaReaderEndpoint(
+              withEnvFallback(parsed.integrations.jinaReader?.endpoint, process.env.JINA_READER_ENDPOINT || 'https://r.jina.ai/')
+            ),
+            apiKey: withEnvFallback(
+              parsed.integrations.jinaReader?.apiKey,
+              process.env.JINA_API_KEY || process.env.JINA_READER_API_KEY
+            ),
+            timeoutSec:
+              typeof parsed.integrations.jinaReader?.timeoutSec === 'number'
+                ? Math.max(3, Math.min(180, Math.floor(parsed.integrations.jinaReader.timeoutSec)))
+                : Number.parseInt(process.env.JINA_READER_TIMEOUT_SEC || '30', 10),
+            noCache:
+              typeof parsed.integrations.jinaReader?.noCache === 'boolean'
+                ? parsed.integrations.jinaReader.noCache
+                : /^(1|true|yes)$/i.test(process.env.JINA_READER_NO_CACHE || ''),
+          },
+        }
+      : defaultIntegrations(),
+    localTranscriber: normalizeLocalTranscriberConfig(parsed?.localTranscriber),
+    videoUnderstanding: normalizeVideoUnderstandingConfig(parsed?.videoUnderstanding),
+  };
+}
+
+function writeJson(filePath: string, data: unknown): void {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+function readJson(filePath: string): unknown {
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  if (!raw.trim()) {
+    return undefined;
+  }
+  return JSON.parse(raw) as unknown;
 }
 
 function normalizeLocalTranscriberConfig(
@@ -441,67 +466,59 @@ function ensureDataDir(): void {
 
 function readDiskData(): AppData {
   ensureDataDir();
+
+  const defaultRuntime = createDefaultRuntimeData();
+  const defaultSettings = createDefaultSettings();
+  let runtimeData: Omit<AppData, 'settings'> = defaultRuntime;
+  let legacySettings: unknown = undefined;
+
   if (!fs.existsSync(DATA_FILE)) {
-    const initial = createDefaultData();
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), 'utf-8');
-    return initial;
+    writeJson(DATA_FILE, defaultRuntime);
   }
 
-  const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-  if (!raw.trim()) {
-    const initial = createDefaultData();
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), 'utf-8');
-    return initial;
+  try {
+    const parsed = readJson(DATA_FILE) as Partial<AppData> | undefined;
+    if (parsed && typeof parsed === 'object') {
+      runtimeData = {
+        notes: Array.isArray(parsed.notes) ? parsed.notes : [],
+        drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
+        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+      };
+      legacySettings = parsed.settings;
+    }
+  } catch {
+    runtimeData = defaultRuntime;
+    legacySettings = undefined;
+    writeJson(DATA_FILE, defaultRuntime);
   }
 
-  const parsed = JSON.parse(raw) as Partial<AppData>;
-  const envModels = readModelsFromEnv();
-  const next: AppData = {
-    notes: Array.isArray(parsed.notes) ? parsed.notes : [],
-    drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
-    tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
-    settings: {
-      models: migrateModelBaseUrls(
-        envModels.length > 0
-          ? envModels
-          : normalizeModelRecords(
-              Array.isArray(parsed.settings?.models) && parsed.settings?.models.length > 0
-                ? parsed.settings.models
-                : defaultModels()
-            )
-      ),
-      prompts: Array.isArray(parsed.settings?.prompts) ? parsed.settings.prompts : defaultPrompts(),
-      integrations: parsed.settings?.integrations
-        ? {
-            jinaReader: {
-              endpoint: normalizeJinaReaderEndpoint(
-                withEnvFallback(parsed.settings.integrations.jinaReader?.endpoint, process.env.JINA_READER_ENDPOINT || 'https://r.jina.ai/')
-              ),
-              apiKey: withEnvFallback(
-                parsed.settings.integrations.jinaReader?.apiKey,
-                process.env.JINA_API_KEY || process.env.JINA_READER_API_KEY
-              ),
-              timeoutSec:
-                typeof parsed.settings.integrations.jinaReader?.timeoutSec === 'number'
-                  ? Math.max(3, Math.min(180, Math.floor(parsed.settings.integrations.jinaReader.timeoutSec)))
-                  : Number.parseInt(process.env.JINA_READER_TIMEOUT_SEC || '30', 10),
-              noCache:
-                typeof parsed.settings.integrations.jinaReader?.noCache === 'boolean'
-                  ? parsed.settings.integrations.jinaReader.noCache
-                  : /^(1|true|yes)$/i.test(process.env.JINA_READER_NO_CACHE || ''),
-            },
-          }
-        : defaultIntegrations(),
-      localTranscriber: normalizeLocalTranscriberConfig(parsed.settings?.localTranscriber),
-      videoUnderstanding: normalizeVideoUnderstandingConfig(parsed.settings?.videoUnderstanding),
-    },
+  let settings = defaultSettings;
+  if (!fs.existsSync(SETTINGS_FILE)) {
+    settings = normalizeSettings(legacySettings);
+    writeJson(SETTINGS_FILE, settings);
+  } else {
+    try {
+      settings = normalizeSettings(readJson(SETTINGS_FILE));
+    } catch {
+      settings = normalizeSettings(legacySettings);
+      writeJson(SETTINGS_FILE, settings);
+    }
+  }
+
+  return {
+    ...runtimeData,
+    settings,
   };
-  return next;
 }
 
 function persist(data: AppData): void {
   ensureDataDir();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  writeJson(DATA_FILE, {
+    notes: data.notes,
+    drafts: data.drafts,
+    tasks: data.tasks,
+  });
+  writeJson(SETTINGS_FILE, data.settings);
 }
 
 export function getAppData(): AppData {

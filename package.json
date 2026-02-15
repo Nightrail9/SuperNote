@@ -19,8 +19,6 @@
     "build:web": "npm --prefix apps/web run build",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc --noEmit",
-    "test:server:file": "node scripts/test/run-server-test.mjs",
-    "test:server:all": "node scripts/test/run-all-server-tests.mjs",
     "docker:config": "docker compose -f infra/docker/docker-compose.yml config",
     "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d"
   },
@@ -37,7 +35,6 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^20.10.0",
-    "fast-check": "^4.5.3",
     "tsx": "^4.21.0",
     "typescript": "^5.3.0"
   },

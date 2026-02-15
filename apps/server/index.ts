@@ -66,8 +66,8 @@ function createApp(config?: ServerConfig): Express {
   app.use('/api', createSettingsRouter());
 
   // Serve generated screenshots and static artifacts under /static
-  const storagePublicDir = path.resolve(process.cwd(), 'storage', 'public');
-  app.use('/static', express.static(storagePublicDir));
+  const dataPublicDir = path.resolve(process.cwd(), 'data', 'public');
+  app.use('/static', express.static(dataPublicDir));
 
   // Serve frontend build when apps/web/dist exists
   const frontendDistDir = path.resolve(process.cwd(), 'apps', 'web', 'dist');

@@ -5,7 +5,7 @@ type LogLevel = 'info' | 'warn' | 'error';
 
 type DiagnosticPayload = Record<string, unknown>;
 
-const LOG_DIR = path.resolve('storage', 'data', 'logs');
+const LOG_DIR = path.resolve('data', 'logs');
 const LOG_FILE = path.join(LOG_DIR, 'note-generation-debug.log');
 const MAX_LOG_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_VALUE_LENGTH = 1500;

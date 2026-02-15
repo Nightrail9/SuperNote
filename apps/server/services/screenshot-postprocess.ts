@@ -62,9 +62,9 @@ export async function replaceScreenshotMarkers(options: {
   }
 
   // 保存到 public 目录供Web访问
-  const publicDir = path.resolve('storage', 'public', 'screenshots', options.taskId);
+  const publicDir = path.resolve('data', 'public', 'screenshots', options.taskId);
   // 保存到 data 目录作为数据备份
-  const dataDir = path.resolve('storage', 'data', 'screenshots', options.taskId);
+  const dataDir = path.resolve('data', 'screenshots', options.taskId);
   fs.mkdirSync(publicDir, { recursive: true });
   fs.mkdirSync(dataDir, { recursive: true });
 

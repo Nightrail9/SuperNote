@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 
 import { getProjectRoot, resolveProjectPath } from './path-resolver.js';
 
@@ -129,25 +128,4 @@ export function isBundledFfmpegAvailable(): boolean {
   const ffmpegPath = path.join(BUNDLED_FFMPEG_DIR, `ffmpeg${getExecutableExt()}`);
   const ffprobePath = path.join(BUNDLED_FFMPEG_DIR, `ffprobe${getExecutableExt()}`);
   return fs.existsSync(ffmpegPath) && fs.existsSync(ffprobePath);
-}
-
-/**
- * 获取内置 FFmpeg 信息
- *
- * @returns 包含路径和版本信息的配置对象，如果内置 FFmpeg 不存在则返回 null
- */
-export function getBundledFfmpegInfo(): {
-  dir: string;
-  ffmpeg: string;
-  ffprobe: string;
-} | null {
-  if (!isBundledFfmpegAvailable()) {
-    return null;
-  }
-
-  return {
-    dir: BUNDLED_FFMPEG_DIR,
-    ffmpeg: path.join(BUNDLED_FFMPEG_DIR, `ffmpeg${getExecutableExt()}`),
-    ffprobe: path.join(BUNDLED_FFMPEG_DIR, `ffprobe${getExecutableExt()}`),
-  };
 }
