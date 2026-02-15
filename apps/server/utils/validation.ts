@@ -9,7 +9,7 @@
  * @param value - The value to parse
  * @param fallback - The fallback value if parsing fails
  * @returns The parsed positive integer or the fallback value
- * 
+ *
  * @example
  * parsePositiveInt('42', 1); // returns 42
  * parsePositiveInt('-5', 10); // returns 10

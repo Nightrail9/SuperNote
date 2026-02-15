@@ -13,19 +13,21 @@
 // Load environment variables from .env file
 import 'dotenv/config';
 
+import express from 'express';
 import * as fs from 'fs';
-import express, { Express, Request, Response } from 'express';
-import { fileURLToPath } from 'url';
 import * as path from 'path';
-import { createCorsMiddleware } from './middleware/cors.js';
+import { fileURLToPath } from 'url';
+
 import { loadConfig } from './config.js';
 import type { ServerConfig } from './config.js';
-import { createParseRouter } from './routes/parse.js';
-import { createSummarizeRouter } from './routes/summarize.js';
-import { createNotesRouter } from './routes/notes.js';
+import { createCorsMiddleware } from './middleware/cors.js';
 import { createDraftsRouter } from './routes/drafts.js';
-import { createTasksRouter } from './routes/tasks.js';
+import { createNotesRouter } from './routes/notes.js';
+import { createParseRouter } from './routes/parse.js';
 import { createSettingsRouter } from './routes/settings.js';
+import { createSummarizeRouter } from './routes/summarize.js';
+import { createTasksRouter } from './routes/tasks.js';
+import type { Express, Request, Response } from 'express';
 
 /**
  * Create and configure the Express application

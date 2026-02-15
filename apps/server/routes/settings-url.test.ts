@@ -8,8 +8,9 @@
  */
 
 import fc from 'fast-check';
-import { isGeminiNativeUrl, normalizeBaseUrl } from '../utils/url-helpers.js';
+
 import { buildGeminiModelsEndpoint } from './settings.js';
+import { isGeminiNativeUrl, normalizeBaseUrl } from '../utils/url-helpers.js';
 
 // ============================================================================
 // Test Utilities

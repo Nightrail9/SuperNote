@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import PageBlock from '../../components/PageBlock.vue'
+import { computed, onMounted, ref } from 'vue'
+
 import { api } from '../../api/modules'
+import PageBlock from '../../components/PageBlock.vue'
 import type { PromptConfig } from '../../types/domain'
 import { toArrayData } from '../../utils/api-data'
 
@@ -164,14 +165,32 @@ onMounted(() => {
 </script>
 
 <template>
-  <PageBlock title="提示词配置" description="管理生成模板与默认提示词，确保不同场景输出风格一致" header-outside show-author-info>
-    <div class="prompts-page" v-loading="loading">
+  <PageBlock
+    title="提示词配置"
+    description="管理生成模板与默认提示词，确保不同场景输出风格一致"
+    header-outside
+    show-author-info
+  >
+    <div
+      v-loading="loading"
+      class="prompts-page"
+    >
       <div class="section-head">
         <div>
-          <p class="section-title">提示词模板</p>
-          <p class="section-desc">支持新增、编辑、删除，并可指定默认模板</p>
+          <p class="section-title">
+            提示词模板
+          </p>
+          <p class="section-desc">
+            支持新增、编辑、删除，并可指定默认模板
+          </p>
         </div>
-        <el-button type="primary" :loading="saving" @click="openCreateModal">添加模板</el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="openCreateModal"
+        >
+          添加模板
+        </el-button>
       </div>
 
       <div class="prompt-table">
@@ -180,25 +199,60 @@ onMounted(() => {
           <div>模板名称</div>
           <div>内容摘要</div>
           <div>更新时间</div>
-          <div class="ops">操作</div>
+          <div class="ops">
+            操作
+          </div>
         </div>
 
-        <div v-for="item in orderedPrompts" :key="item.id" class="table-row" :class="{ active: item.isDefault }">
+        <div
+          v-for="item in orderedPrompts"
+          :key="item.id"
+          class="table-row"
+          :class="{ active: item.isDefault }"
+        >
           <div>
-            <el-button size="small" :type="item.isDefault ? 'success' : 'default'" :disabled="item.isDefault || saving" @click="setDefault(item.id)">
+            <el-button
+              size="small"
+              :type="item.isDefault ? 'success' : 'default'"
+              :disabled="item.isDefault || saving"
+              @click="setDefault(item.id)"
+            >
               {{ item.isDefault ? '默认' : '设为默认' }}
             </el-button>
           </div>
-          <div class="name">{{ item.name }}</div>
-          <div class="snippet">{{ item.template.slice(0, 80) || '未填写模板内容' }}</div>
-          <div class="time">{{ item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-' }}</div>
+          <div class="name">
+            {{ item.name }}
+          </div>
+          <div class="snippet">
+            {{ item.template.slice(0, 80) || '未填写模板内容' }}
+          </div>
+          <div class="time">
+            {{ item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-' }}
+          </div>
           <div class="ops">
-            <el-button text @click="openEditModal(item)">编辑</el-button>
-            <el-button text type="danger" :disabled="prompts.length <= 1" @click="removePrompt(item.id)">删除</el-button>
+            <el-button
+              text
+              @click="openEditModal(item)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              text
+              type="danger"
+              :disabled="prompts.length <= 1"
+              @click="removePrompt(item.id)"
+            >
+              删除
+            </el-button>
           </div>
         </div>
 
-        <div v-if="orderedPrompts.length === 0" class="empty">暂无提示词模板</div>
+        <div
+          v-if="orderedPrompts.length === 0"
+          class="empty"
+        >
+          暂无提示词模板
+        </div>
       </div>
     </div>
 
@@ -215,23 +269,41 @@ onMounted(() => {
       <div class="modal-form">
         <el-form label-position="top">
           <el-form-item label="模板名称">
-            <el-input v-model="form.name" placeholder="请输入模板名称" />
+            <el-input
+              v-model="form.name"
+              placeholder="请输入模板名称"
+            />
           </el-form-item>
 
           <el-form-item label="模板内容">
-            <el-input v-model="form.template" type="textarea" :rows="16" placeholder="请填写完整提示词内容" />
+            <el-input
+              v-model="form.template"
+              type="textarea"
+              :rows="16"
+              placeholder="请填写完整提示词内容"
+            />
           </el-form-item>
 
           <el-form-item>
-            <el-checkbox v-model="form.isDefault">保存后设为默认模板</el-checkbox>
+            <el-checkbox v-model="form.isDefault">
+              保存后设为默认模板
+            </el-checkbox>
           </el-form-item>
         </el-form>
       </div>
 
       <template #footer>
         <div class="modal-actions">
-          <el-button @click="closeModal">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="savePromptFromModal">保存</el-button>
+          <el-button @click="closeModal">
+            取消
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="saving"
+            @click="savePromptFromModal"
+          >
+            保存
+          </el-button>
         </div>
       </template>
     </el-dialog>

@@ -1,4 +1,5 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+
 import {
   createId,
   getAppData,
@@ -10,6 +11,7 @@ import { startGenerateTask } from '../services/note-generation.js';
 import { normalizeNoteFormats } from '../services/note-options.js';
 import { sendApiError, toErrorMessage } from '../utils/http-error.js';
 import { parsePositiveInt } from '../utils/validation.js';
+import type { Request, Response } from 'express';
 
 export function createNotesRouter(): Router {
   const router = Router();

@@ -4,17 +4,18 @@
  * 验证流水线执行后临时文件会被清理。
  */
 
+import fc from 'fast-check';
 import * as fs from 'fs';
 import * as path from 'path';
-import fc from 'fast-check';
+
+import type { AIOrganizer, AIOrganizeResult } from './ai-organizer.js';
+import type { LocalTranscriber, TranscriptResult } from './local-transcriber.js';
+import type { BilibiliVideoParser, VideoInfo } from './pipeline-utils.js';
 import {
   DefaultSummaryPipeline,
   type SummaryPipelineConfig,
   type SummaryPipelineDeps,
 } from './summary-pipeline.js';
-import type { BilibiliVideoParser, VideoInfo } from './pipeline-utils.js';
-import type { AIOrganizer, AIOrganizeResult } from './ai-organizer.js';
-import type { LocalTranscriber, TranscriptResult } from './local-transcriber.js';
 
 // 测试工具
 

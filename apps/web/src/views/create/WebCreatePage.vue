@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { Loading } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
-import { api } from '../../api/modules'
+
 import { getActiveTaskId, readCreatePreferences, saveCreatePreferences, saveTaskMeta, setActiveTaskId } from './taskMeta'
 import { useTaskConfigOptions } from './useTaskConfigOptions'
+import { api } from '../../api/modules'
 import type { NoteFormat } from '../../types/domain'
 
 type SourceEntry = {
@@ -249,13 +250,22 @@ onBeforeUnmount(() => {
 <template>
   <div class="create-page-stack">
     <div class="create-page-hero reveal-step-1">
-      <h2 class="page-block-title">网页链接生成笔记</h2>
-      <p class="page-desc">输入网页链接并选择模型后，系统将使用 Jina Reader 抓取正文并生成笔记</p>
+      <h2 class="page-block-title">
+        网页链接生成笔记
+      </h2>
+      <p class="page-desc">
+        输入网页链接并选择模型后，系统将使用 Jina Reader 抓取正文并生成笔记
+      </p>
     </div>
 
     <div class="create-workspace create-workspace--web reveal-step-2">
-      <el-card class="page-block create-main-panel" shadow="never">
-        <el-text tag="strong">网页链接（支持多行）</el-text>
+      <el-card
+        class="page-block create-main-panel"
+        shadow="never"
+      >
+        <el-text tag="strong">
+          网页链接（支持多行）
+        </el-text>
         <ol class="field-intro-list">
           <li>每行输入 1 个网页链接，或用空格、逗号分隔多个链接</li>
           <li>支持 http/https 链接，提交前会自动清洗和校验</li>
@@ -270,39 +280,109 @@ onBeforeUnmount(() => {
             placeholder="支持一行一个链接，也支持空格/逗号分隔&#10;生成前会自动校验链接合法性"
           />
         </div>
-        <el-alert v-if="urlError" class="field-alert" type="error" :closable="false" :title="urlError" show-icon />
-        <el-text size="small" type="info">将按系统配置默认项生成；若无可用模型，请先前往系统配置 > 模型配置启用模型</el-text>
+        <el-alert
+          v-if="urlError"
+          class="field-alert"
+          type="error"
+          :closable="false"
+          :title="urlError"
+          show-icon
+        />
+        <el-text
+          size="small"
+          type="info"
+        >
+          将按系统配置默认项生成；若无可用模型，请先前往系统配置 > 模型配置启用模型
+        </el-text>
       </el-card>
 
-      <el-card class="page-block create-side-panel note-preference-card" shadow="never">
+      <el-card
+        class="page-block create-side-panel note-preference-card"
+        shadow="never"
+      >
         <div class="note-options-grid">
           <div class="create-option-row">
             <div class="option-title-row">
-              <el-text tag="strong">提示词</el-text>
-              <el-tag size="small" effect="plain" type="success">可选增强</el-tag>
+              <el-text tag="strong">
+                提示词
+              </el-text>
+              <el-tag
+                size="small"
+                effect="plain"
+                type="success"
+              >
+                可选增强
+              </el-tag>
             </div>
-            <el-select v-model="selectedPromptId" clearable placeholder="默认（使用系统默认提示词）">
-              <el-option v-for="item in promptSelectOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-select
+              v-model="selectedPromptId"
+              clearable
+              placeholder="默认（使用系统默认提示词）"
+            >
+              <el-option
+                v-for="item in promptSelectOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-select>
-            <el-text size="small" type="info">支持按场景切换模板内容，如精简、详细或小红书风格</el-text>
+            <el-text
+              size="small"
+              type="info"
+            >
+              支持按场景切换模板内容，如精简、详细或小红书风格
+            </el-text>
           </div>
 
           <div class="create-option-row">
             <div class="option-title-row">
-              <el-text tag="strong">笔记格式</el-text>
-              <el-tag size="small" effect="plain">输出控制</el-tag>
+              <el-text tag="strong">
+                笔记格式
+              </el-text>
+              <el-tag
+                size="small"
+                effect="plain"
+              >
+                输出控制
+              </el-tag>
             </div>
-            <el-checkbox v-model="includeToc" class="toc-option-check">生成目录（TOC）</el-checkbox>
-            <el-text size="small" type="info">目录用于快速跳读，适合长文档或多段网页内容</el-text>
+            <el-checkbox
+              v-model="includeToc"
+              class="toc-option-check"
+            >
+              生成目录（TOC）
+            </el-checkbox>
+            <el-text
+              size="small"
+              type="info"
+            >
+              目录用于快速跳读，适合长文档或多段网页内容
+            </el-text>
           </div>
         </div>
 
         <div class="note-generate-action">
-          <el-button :type="generateButtonType" size="large" :loading="generating" @click="handleGenerate">
-            <el-icon v-if="activeTaskId" class="generate-status-icon is-rotating"><Loading /></el-icon>
+          <el-button
+            :type="generateButtonType"
+            size="large"
+            :loading="generating"
+            @click="handleGenerate"
+          >
+            <el-icon
+              v-if="activeTaskId"
+              class="generate-status-icon is-rotating"
+            >
+              <Loading />
+            </el-icon>
             {{ generateButtonLabel }}
           </el-button>
-          <el-text size="small" type="info" class="generate-hint">建议：长内容开启目录，便于快速定位章节</el-text>
+          <el-text
+            size="small"
+            type="info"
+            class="generate-hint"
+          >
+            建议：长内容开启目录，便于快速定位章节
+          </el-text>
         </div>
       </el-card>
     </div>

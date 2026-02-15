@@ -11,6 +11,7 @@
  */
 
 import fc from 'fast-check';
+
 import { buildDisplayTitle } from './pipeline-utils.js';
 
 // ============================================================================

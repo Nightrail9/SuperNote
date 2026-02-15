@@ -5,7 +5,8 @@
  * Implements Requirements: 3.7, 4.8, 7.3, 7.4
  */
 
-import { Config, RetryConfig, DEFAULT_CONFIG, DEFAULT_RETRY } from './types.js';
+import type { Config, RetryConfig} from './types.js';
+import { DEFAULT_CONFIG, DEFAULT_RETRY } from './types.js';
 
 /**
  * HTTP request options

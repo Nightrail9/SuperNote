@@ -10,7 +10,7 @@
  * should produce an equivalent object.
  */
 
-import {
+import type {
   ParseResult,
   ParsedVideo,
   ParseError,

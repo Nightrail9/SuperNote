@@ -1,6 +1,11 @@
-import { Router, Request, Response } from 'express';
-import * as path from 'path';
+import { execFile } from 'child_process';
+import { Router } from 'express';
 import * as fs from 'fs';
+import * as path from 'path';
+import { promisify } from 'util';
+
+import { TIMEOUTS } from '../constants/index.js';
+import { DefaultAIOrganizer } from '../services/ai-organizer.js';
 import {
   getAppData,
   maskSecret,
@@ -12,15 +17,12 @@ import {
   type PromptConfigRecord,
   type VideoUnderstandingConfigRecord,
 } from '../services/app-data-store.js';
-import { DefaultAIOrganizer } from '../services/ai-organizer.js';
 import { normalizeJinaReaderEndpoint, readWebPageWithJina } from '../services/jina-reader-client.js';
 import { sendApiError, toErrorMessage } from '../utils/http-error.js';
-import { normalizeBaseUrl, isGeminiNativeUrl, stripApiPath } from '../utils/url-helpers.js';
-import { createAbortSignal } from '../utils/retry.js';
-import { TIMEOUTS } from '../constants/index.js';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { resolveProjectPath, resolveCommand, getProjectRoot } from '../utils/path-resolver.js';
+import { createAbortSignal } from '../utils/retry.js';
+import { normalizeBaseUrl, isGeminiNativeUrl, stripApiPath } from '../utils/url-helpers.js';
+import type { Request, Response } from 'express';
 
 const execFileAsync = promisify(execFile);
 
@@ -35,17 +37,25 @@ const LOCAL_TRANSCRIBER_ENV_KEYS = [
   'LOCAL_ASR_TIMEOUT_MS',
 ] as const;
 
+const MODEL_ENV_KEYS = ['AI_MODELS_JSON', 'AI_DEFAULT_MODEL_ID'] as const;
+
 type LocalTranscriberEnvKey = (typeof LOCAL_TRANSCRIBER_ENV_KEYS)[number];
+type ModelEnvKey = (typeof MODEL_ENV_KEYS)[number];
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function upsertEnvFileValues(filePath: string, values: Record<LocalTranscriberEnvKey, string>): void {
+function upsertEnvFileValues<T extends string>(
+  filePath: string,
+  keys: readonly T[],
+  values: Record<T, string>,
+): void {
   const raw = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : '';
   const lineBreak = raw.includes('\r\n') ? '\r\n' : '\n';
   const lines = raw.length > 0 ? raw.split(/\r?\n/) : [];
-  const updated = new Set<LocalTranscriberEnvKey>();
+  const keySet = new Set(keys);
+  const updated = new Set<T>();
 
   for (let i = 0; i < lines.length; i += 1) {
     const current = lines[i] ?? '';
@@ -56,21 +66,18 @@ function upsertEnvFileValues(filePath: string, values: Record<LocalTranscriberEn
     if (!match) {
       continue;
     }
-    const key = match[1] as LocalTranscriberEnvKey;
-    if (!LOCAL_TRANSCRIBER_ENV_KEYS.includes(key) || updated.has(key)) {
+    const key = match[1] as T;
+    if (!keySet.has(key) || updated.has(key)) {
       continue;
     }
     lines[i] = `${key}=${values[key]}`;
     updated.add(key);
   }
 
-  const missing = LOCAL_TRANSCRIBER_ENV_KEYS.filter((key) => !updated.has(key));
+  const missing = keys.filter((key) => !updated.has(key));
   if (missing.length > 0) {
     if (lines.length > 0 && lines[lines.length - 1]?.trim() !== '') {
       lines.push('');
-    }
-    if (!lines.some((line) => line.includes('Local transcription'))) {
-      lines.push('# Local transcription (Bilibili mode)');
     }
     for (const key of missing) {
       lines.push(`${key}=${values[key]}`);
@@ -79,6 +86,30 @@ function upsertEnvFileValues(filePath: string, values: Record<LocalTranscriberEn
 
   const next = `${lines.join(lineBreak)}${lineBreak}`;
   fs.writeFileSync(filePath, next, 'utf-8');
+}
+
+function serializeModelsForEnv(models: ModelConfigRecord[]): string {
+  const normalized = models.map((item) => ({
+    id: item.id,
+    provider: item.provider,
+    enabled: Boolean(item.enabled),
+    isDefault: Boolean(item.isDefault),
+    baseUrl: item.baseUrl ?? '',
+    apiKey: item.apiKey ?? '',
+    modelName: item.modelName,
+    timeoutMs: item.timeoutMs ?? 60000,
+  }));
+  return JSON.stringify(normalized);
+}
+
+export function persistModelsToEnvFile(filePath: string, models: ModelConfigRecord[]): Record<ModelEnvKey, string> {
+  const defaultModelId = models.find((item) => item.isDefault)?.id ?? models[0]?.id ?? '';
+  const envValues: Record<ModelEnvKey, string> = {
+    AI_MODELS_JSON: serializeModelsForEnv(models),
+    AI_DEFAULT_MODEL_ID: defaultModelId,
+  };
+  upsertEnvFileValues(filePath, MODEL_ENV_KEYS, envValues);
+  return envValues;
 }
 
 function normalizeLocalTranscriberInput(
@@ -97,7 +128,7 @@ function normalizeLocalTranscriberInput(
   const language = typeof incoming?.language === 'string' && incoming.language.trim()
     ? incoming.language.trim()
     : prev.language;
-  const device = incoming?.device === 'cpu' || incoming?.device === 'cuda' || incoming?.device === 'auto'
+  const device = incoming?.device === 'cpu' || incoming?.device === 'cuda'
     ? incoming.device
     : prev.device;
   const beamSize = typeof incoming?.beamSize === 'number'
@@ -117,6 +148,9 @@ function normalizeLocalTranscriberInput(
     model,
     language,
     device,
+    cudaChecked: prev.cudaChecked,
+    cudaAvailable: prev.cudaAvailable,
+    cudaEnabledOnce: prev.cudaEnabledOnce || device === 'cuda',
     beamSize,
     temperature,
     timeoutMs,
@@ -366,20 +400,28 @@ export function createSettingsRouter(): Router {
         return;
       }
 
-      mutateAppData((data) => {
-        const existingById = new Map(data.settings.models.map((item) => [item.id, item]));
-        const merged = payload.map((item) => {
-          const prev = existingById.get(item.id);
-          return {
-            ...item,
-            apiKey: item.apiKey ? item.apiKey : prev?.apiKey,
-          };
-        });
+      const existingById = new Map(getAppData().settings.models.map((item) => [item.id, item]));
+      const merged: ModelConfigRecord[] = payload.map((item) => {
+        const prev = existingById.get(item.id);
+        return {
+          ...item,
+          apiKey: item.apiKey ? item.apiKey : prev?.apiKey,
+        };
+      });
 
-        const hasDefault = merged.some((item) => item.isDefault);
-        if (!hasDefault && merged.length > 0) {
-          merged[0].isDefault = true;
-        }
+      const hasDefault = merged.some((item) => item.isDefault);
+      if (!hasDefault && merged.length > 0) {
+        merged[0].isDefault = true;
+      }
+
+      const envFilePath = path.resolve(getProjectRoot(), '.env');
+      const envValues = persistModelsToEnvFile(envFilePath, merged);
+
+      for (const [key, value] of Object.entries(envValues)) {
+        process.env[key] = value;
+      }
+
+      mutateAppData((data) => {
         data.settings.models = merged;
       });
 
@@ -724,6 +766,10 @@ export function createSettingsRouter(): Router {
         sendApiError(res, 400, 'INVALID_FFMPEG_BIN', '请填写 ffmpeg 可执行路径');
         return;
       }
+      if (normalized.device === 'cuda' && (!prev.cudaChecked || !prev.cudaAvailable)) {
+        sendApiError(res, 400, 'CUDA_NOT_VERIFIED', '请先在环境检测中完成 CUDA 检测并确认可用后再保存 CUDA 设备');
+        return;
+      }
 
       const envFilePath = path.resolve(getProjectRoot(), '.env');
       const envValues: Record<LocalTranscriberEnvKey, string> = {
@@ -737,14 +783,17 @@ export function createSettingsRouter(): Router {
         LOCAL_ASR_TIMEOUT_MS: String(normalized.timeoutMs),
       };
 
-      upsertEnvFileValues(envFilePath, envValues);
+      upsertEnvFileValues(envFilePath, LOCAL_TRANSCRIBER_ENV_KEYS, envValues);
 
       for (const [key, value] of Object.entries(envValues)) {
         process.env[key] = value;
       }
 
       mutateAppData((data) => {
-        data.settings.localTranscriber = normalized;
+        data.settings.localTranscriber = {
+          ...normalized,
+          cudaEnabledOnce: normalized.cudaEnabledOnce || normalized.device === 'cuda',
+        };
       });
 
       res.json({ success: true, message: '本地转写配置已保存到 .env' });
@@ -785,7 +834,7 @@ export function createSettingsRouter(): Router {
             KMP_DUPLICATE_LIB_OK: process.env.KMP_DUPLICATE_LIB_OK || 'TRUE',
           },
         });
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
       } catch (error) {
         // Ignore error, just checking if command is executable
       }
@@ -916,6 +965,15 @@ export function createSettingsRouter(): Router {
       results.cuda.ok = false;
       results.cuda.details = 'Failed to detect CUDA';
     }
+
+    mutateAppData((data) => {
+      const prev = data.settings.localTranscriber;
+      data.settings.localTranscriber = {
+        ...prev,
+        cudaChecked: true,
+        cudaAvailable: results.cuda.ok,
+      };
+    });
 
     res.json(results);
   });

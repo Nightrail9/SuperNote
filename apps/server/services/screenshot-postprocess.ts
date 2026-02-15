@@ -1,7 +1,8 @@
+import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFile } from 'child_process';
 import { promisify } from 'util';
+
 import { resolveFfmpegBin } from '../utils/ffmpeg-resolver.js';
 import { getErrorMessage } from '../utils/http-error.js';
 

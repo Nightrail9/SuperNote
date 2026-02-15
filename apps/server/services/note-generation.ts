@@ -1,11 +1,6 @@
 import * as fs from 'fs';
 
-import { createSummaryPipeline, loadSummaryPipelineConfig } from './summary-pipeline.js';
 import { DefaultAIOrganizer } from './ai-organizer.js';
-import { readWebPageWithJina } from './jina-reader-client.js';
-import { getDiagnosticLogFilePath, logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
-import { buildPromptWithOptions, type NoteFormat } from './note-options.js';
-import { replaceScreenshotMarkers } from './screenshot-postprocess.js';
 import {
   createId,
   getAppData,
@@ -15,6 +10,11 @@ import {
   type PromptConfigRecord,
   type TaskRecord,
 } from './app-data-store.js';
+import { getDiagnosticLogFilePath, logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
+import { readWebPageWithJina } from './jina-reader-client.js';
+import { buildPromptWithOptions, type NoteFormat } from './note-options.js';
+import { replaceScreenshotMarkers } from './screenshot-postprocess.js';
+import { createSummaryPipeline, loadSummaryPipelineConfig } from './summary-pipeline.js';
 import { BILIBILI_URL_PATTERN } from '../constants/index.js';
 
 type GenerationOptions = {
@@ -253,6 +253,20 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+function mapPipelineStage(stage: string | undefined): string {
+  if (!stage) {
+    return 'transcribe';
+  }
+  return stage === 'generate' ? 'merge' : stage;
+}
+
+function resolvePipelineProgress(totalUrls: number, completedCount: number, stageProgress: number): number {
+  const safeTotal = Math.max(1, totalUrls);
+  const normalizedStageProgress = Math.max(0, Math.min(1, stageProgress));
+  const normalizedTotalProgress = (completedCount + normalizedStageProgress) / safeTotal;
+  return 15 + Math.floor(normalizedTotalProgress * 55);
+}
+
 async function runAiStage(
   taskId: string,
   mergedMarkdown: string,
@@ -262,7 +276,7 @@ async function runAiStage(
   keyframeWarnings: string[],
   keyframeStats: Array<NonNullable<NonNullable<TaskRecord['debug']>['keyframeStats']>[number]>,
 ): Promise<{ success: boolean; resultMd?: string }> {
-  const resolvedTimeoutMs = resolveAiTimeoutMs(model.timeoutMs, mergedMarkdown.length);
+  const resolvedTimeoutMs = resolveAiTimeoutMs(model.timeoutMs, mergedMarkdown.length, effectivePrompt.length);
   throwIfCancelled(taskId, signal);
   setRunningStage(taskId, 'generate');
   updateTaskProgress(taskId, {
@@ -329,19 +343,25 @@ async function runAiStage(
   return { success: true, resultMd };
 }
 
-function resolveAiTimeoutMs(modelTimeoutMs: number | undefined, markdownLength: number): number {
+function resolveAiTimeoutMs(
+  modelTimeoutMs: number | undefined,
+  markdownLength: number,
+  promptLength: number,
+): number {
   const baseTimeoutMs =
     typeof modelTimeoutMs === 'number' && Number.isFinite(modelTimeoutMs)
       ? Math.max(15000, Math.min(600000, Math.floor(modelTimeoutMs)))
       : 60000;
 
-  if (markdownLength >= 30000) {
+  const totalInputLength = Math.max(0, markdownLength) + Math.max(0, promptLength);
+
+  if (totalInputLength >= 30000) {
     return Math.max(baseTimeoutMs, 240000);
   }
-  if (markdownLength >= 12000) {
+  if (totalInputLength >= 12000) {
     return Math.max(baseTimeoutMs, 180000);
   }
-  if (markdownLength >= 6000) {
+  if (totalInputLength >= 6000) {
     return Math.max(baseTimeoutMs, 120000);
   }
   return baseTimeoutMs;
@@ -429,6 +449,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
     const effectivePrompt = buildPromptWithOptions(prompt.template, selectedFormats);
 
     let mergedMarkdown = '';
+    let resolvedTitle: string | undefined;
     const keyframeWarnings: string[] = [];
     const keyframeStats: Array<NonNullable<NonNullable<TaskRecord['debug']>['keyframeStats']>[number]> = [];
     const sourceMedias: SourceMedia[] = [];
@@ -518,7 +539,17 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
         return;
       }
 
-      mergedMarkdown = buildCombinedWebMarkdown(webContents.filter(Boolean));
+      const normalizedWebContents = webContents.filter(Boolean);
+      if (totalUrls > 1) {
+        resolvedTitle = '多链接网页笔记';
+      } else {
+        const singleWebTitle = normalizedWebContents[0]?.title?.trim();
+        if (singleWebTitle) {
+          resolvedTitle = singleWebTitle;
+        }
+      }
+
+      mergedMarkdown = buildCombinedWebMarkdown(normalizedWebContents);
     } else {
       const pipeline = createSummaryPipeline(loadSummaryPipelineConfig());
       const sourceMarkdownList = new Array<{ url: string; content: string }>(totalUrls);
@@ -527,26 +558,27 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       await mapWithConcurrency(validUrls, linkConcurrency, async (currentUrl, index) => {
         throwIfCancelled(taskId, signal);
 
-        const transcribeProgress = 15 + Math.floor((completedCount / totalUrls) * 55);
+        const transcribeProgress = resolvePipelineProgress(totalUrls, completedCount, 0);
         updateTaskProgress(taskId, {
-          stage: 'transcribe',
+          stage: 'parse',
           progress: transcribeProgress,
-          message: `正在进行视频转录（${index + 1}/${totalUrls}，并发 ${linkConcurrency}）`,
+          message: `正在准备处理视频（${index + 1}/${totalUrls}，并发 ${linkConcurrency}）`,
         });
 
         const extractResult = await pipeline.execute(currentUrl, undefined, {
           signal,
           retainTempFile: useScreenshot,
           enableKeyframes: useScreenshot,
-          onProgress: ({ stage, message }) => {
+          onProgress: ({ stage, progress, message }) => {
             if (signal.aborted) {
               return;
             }
-            const stageName = stage === 'extract_frames' || stage === 'local_transcribe' ? stage : 'transcribe';
+            const stageName = mapPipelineStage(stage);
             setRunningStage(taskId, stageName);
+            const runningProgress = resolvePipelineProgress(totalUrls, completedCount, progress);
             updateTaskProgress(taskId, {
               stage: stageName,
-              progress: transcribeProgress,
+              progress: runningProgress,
               message: `${message}（${index + 1}/${totalUrls}）`,
             });
           },
@@ -564,7 +596,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
           });
           throw new TaskFailureError({
             status: 'failed',
-            stage: extractResult.error?.stage ?? 'transcribe',
+            stage: mapPipelineStage(extractResult.error?.stage),
             progress: transcribeProgress,
             message: `第 ${index + 1} 条链接处理失败`,
             error: withDiagnosticHint(`第 ${index + 1} 条链接处理失败：${extractResult.error?.message ?? '转录与提取失败'}`),
@@ -582,6 +614,15 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
             error: withDiagnosticHint(`第 ${index + 1} 条链接未生成可用的转录 Markdown`),
             retryable: false,
           });
+        }
+
+        if (totalUrls === 1) {
+          const title = extractResult.title?.trim();
+          if (title) {
+            resolvedTitle = title;
+          }
+        } else if (totalUrls > 1) {
+          resolvedTitle = '多链接视频笔记';
         }
 
         if (extractResult.keyframeStats) {
@@ -669,8 +710,9 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       progress: 100,
       message: '生成完成',
       resultMd,
+      resolvedTitle,
       retryable: false,
-      preparedMd: undefined,
+      preparedMd: mergedMarkdown,
       cancelReason: undefined,
       debug: {
         keyframeStats,
@@ -853,7 +895,7 @@ export function retryGenerateTask(taskId: string): { ok: boolean; message: strin
         message: '生成完成',
         resultMd: aiResult.resultMd,
         retryable: false,
-        preparedMd: undefined,
+        preparedMd,
         cancelReason: undefined,
         debug: {
           keyframeStats,
@@ -879,4 +921,102 @@ export function retryGenerateTask(taskId: string): { ok: boolean; message: strin
   })();
 
   return { ok: true, message: '已开始重试生成', task: getTask(taskId) };
+}
+
+export function refineGenerateTask(taskId: string): { ok: boolean; message: string; task?: TaskRecord } {
+  const task = getTask(taskId);
+  if (!task) {
+    return { ok: false, message: '任务不存在' };
+  }
+  if (runningTasks.has(taskId) || task.status === 'generating') {
+    return { ok: false, message: '任务仍在执行中，无法再次整理', task };
+  }
+  if (task.status !== 'success') {
+    return { ok: false, message: '仅已完成任务支持再次整理', task };
+  }
+
+  const sourceMarkdown = task.preparedMd?.trim() || task.resultMd?.trim();
+  if (!sourceMarkdown) {
+    return { ok: false, message: '缺少可整理内容，请重新生成任务', task };
+  }
+
+  const model = resolveModel(task.modelId);
+  if (!model || !model.enabled || !model.baseUrl || !model.apiKey) {
+    return { ok: false, message: '当前模型不可用，请检查模型配置', task };
+  }
+  const prompt = resolvePrompt(task.promptId);
+  if (!prompt || !prompt.template.trim()) {
+    return { ok: false, message: '提示词模板不可用，请检查提示词配置', task };
+  }
+
+  const effectivePrompt = buildPromptWithOptions(
+    prompt.template,
+    (task.formats as NoteFormat[] | undefined) ?? [],
+  );
+  const keyframeWarnings = task.debug?.keyframeWarnings ?? [];
+  const keyframeStats = task.debug?.keyframeStats ?? [];
+
+  mutateAppData((data) => {
+    const current = data.tasks.find((item) => item.id === taskId);
+    if (!current) {
+      return;
+    }
+    current.status = 'generating';
+    current.stage = 'generate';
+    current.progress = 86;
+    current.message = '正在重新整理内容';
+    current.error = undefined;
+    current.retryable = false;
+    current.cancelReason = undefined;
+    current.updatedAt = timestamp();
+  });
+
+  void (async () => {
+    const controller = registerRunningTask(taskId);
+    try {
+      const aiResult = await runAiStage(
+        taskId,
+        sourceMarkdown,
+        model,
+        effectivePrompt,
+        controller.signal,
+        keyframeWarnings,
+        keyframeStats,
+      );
+      if (!aiResult.success || !aiResult.resultMd) {
+        return;
+      }
+      updateTask(taskId, {
+        status: 'success',
+        stage: 'done',
+        progress: 100,
+        message: '再次整理完成',
+        resultMd: aiResult.resultMd,
+        retryable: false,
+        preparedMd: sourceMarkdown,
+        cancelReason: undefined,
+        debug: {
+          keyframeStats,
+          keyframeWarnings,
+        },
+        error: undefined,
+      });
+    } catch (error) {
+      if (!isCancelledError(error)) {
+        logDiagnosticError('note-generation', 'refine_failed_unexpected', error, { taskId });
+        updateTask(taskId, {
+          status: 'failed',
+          stage: 'generate',
+          progress: 92,
+          message: '再次整理失败',
+          error: withDiagnosticHint(error instanceof Error ? error.message : '再次整理失败'),
+          retryable: true,
+        });
+      }
+    } finally {
+      unregisterRunningTask(taskId);
+    }
+  })();
+
+  return { ok: true, message: '已开始再次整理', task: getTask(taskId) };
 }

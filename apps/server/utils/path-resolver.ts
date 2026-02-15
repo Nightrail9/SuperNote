@@ -1,7 +1,7 @@
-import * as path from 'path';
-import * as fs from 'fs';
-import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 /**
  * 获取项目根目录
@@ -11,7 +11,7 @@ export function getProjectRoot(): string {
   // 在 ESM 模块中获取当前文件路径
   const currentFilePath = fileURLToPath(import.meta.url);
   let currentDir = path.dirname(currentFilePath);
-  
+
   // 向上查找 package.json
   while (currentDir !== path.dirname(currentDir)) {
     if (fs.existsSync(path.join(currentDir, 'package.json'))) {
@@ -19,20 +19,20 @@ export function getProjectRoot(): string {
     }
     currentDir = path.dirname(currentDir);
   }
-  
+
   // 兜底：返回当前工作目录
   return process.cwd();
 }
 
 /**
  * 将相对路径解析为绝对路径
- * 
+ *
  * 支持的格式：
  * - ./path/to/file    → 相对于项目根目录
  * - ../path/to/file   → 相对于项目根目录的父目录
  * - path/to/file      → 相对于项目根目录（无前缀也视为相对路径）
  * - D:\path\to\file   → 已是绝对路径，直接返回
- * 
+ *
  * @param inputPath 输入路径（可能是相对或绝对路径）
  * @returns 绝对路径
  */
@@ -41,10 +41,10 @@ export function resolveProjectPath(inputPath: string): string {
   if (path.isAbsolute(inputPath)) {
     return inputPath;
   }
-  
+
   // 获取项目根目录
   const projectRoot = getProjectRoot();
-  
+
   // 解析相对路径
   return path.resolve(projectRoot, inputPath);
 }
@@ -62,7 +62,7 @@ export function isRelativePath(inputPath: string): boolean {
 /**
  * 将绝对路径转换为相对于项目根目录的路径
  * 用于保存配置时统一格式
- * 
+ *
  * @param absolutePath 绝对路径
  * @returns 相对路径（如果可能）或原路径
  */
@@ -70,16 +70,16 @@ export function toRelativePath(absolutePath: string): string {
   if (!absolutePath || !path.isAbsolute(absolutePath)) {
     return absolutePath;
   }
-  
+
   const projectRoot = getProjectRoot();
   const relativePath = path.relative(projectRoot, absolutePath);
-  
+
   // 如果转换后的路径比原路径短，使用相对路径
   if (relativePath.length < absolutePath.length && !relativePath.startsWith('..')) {
     // 添加 ./ 前缀，使其更清晰
     return './' + relativePath.replace(/\\/g, '/');
   }
-  
+
   // 路径在项目外部，保持绝对路径
   return absolutePath;
 }
@@ -119,7 +119,7 @@ export function resolveCommand(command: string): string {
   const isWin = process.platform === 'win32';
   const binDir = isWin ? 'Scripts' : 'bin';
   const ext = isWin ? '.exe' : '';
-  
+
   const candidates = [
     // 项目内 venv
     path.join(projectRoot, '.venv', binDir, command + ext),

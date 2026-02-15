@@ -13,6 +13,7 @@
  */
 
 import fc from 'fast-check';
+
 import {
   validateSummarizeRequest,
   type SummarizeErrorResponse,

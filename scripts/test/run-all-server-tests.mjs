@@ -1,6 +1,6 @@
+import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 
 const rootDir = process.cwd();
 const serverDir = path.resolve(rootDir, 'apps', 'server');

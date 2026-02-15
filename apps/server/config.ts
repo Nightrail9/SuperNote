@@ -1,8 +1,8 @@
 /**
  * Server Configuration Module
- * 
+ *
  * Loads server configuration from environment variables with sensible defaults.
- * 
+ *
  * Requirements: 1.6, 5.1, 5.2
  */
 
@@ -28,18 +28,18 @@ export const DEFAULT_CONFIG: Readonly<Omit<ServerConfig, 'sessdata'>> = {
 
 /**
  * Load server configuration from environment variables
- * 
+ *
  * Environment variables:
  * - PORT: Server port number (default: 3000)
  * - SESSDATA: Bilibili SESSDATA cookie for higher quality streams
  * - CORS_ORIGIN: CORS allowed origin (default: '*')
- * 
+ *
  * @returns ServerConfig object with loaded values
  */
 export function loadConfig(): ServerConfig {
   const portStr = process.env.PORT;
   let port = DEFAULT_CONFIG.port;
-  
+
   if (portStr) {
     const parsedPort = parseInt(portStr, 10);
     // Only use parsed port if it's a valid positive number

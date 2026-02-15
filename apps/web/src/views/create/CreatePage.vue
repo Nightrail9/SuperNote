@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { Loading } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
-import { api } from '../../api/modules'
+
 import { getActiveTaskId, readCreatePreferences, saveCreatePreferences, saveTaskMeta, setActiveTaskId } from './taskMeta'
 import { useTaskConfigOptions } from './useTaskConfigOptions'
+import { api } from '../../api/modules'
 import type { LocalTranscriberConfig, NoteFormat } from '../../types/domain'
 
 type CreateLocationState = {
@@ -56,7 +57,13 @@ const noteFormatOptions: Array<{ label: string; value: NoteFormat }> = [
 
 const gpuAccelerated = ref(false)
 const localTranscriberConfig = ref<LocalTranscriberConfig | null>(null)
-const hasStoredGpuPreference = ref(false)
+const syncingGpuFromConfig = ref(false)
+
+const cudaSelectable = computed(() => {
+  const config = localTranscriberConfig.value
+  if (!config) return false
+  return config.cudaEnabledOnce || config.device === 'cuda'
+})
 
 const ALLOWED_FORMATS = new Set<NoteFormat>(['toc', 'screenshot'])
 
@@ -64,7 +71,6 @@ function persistCreatePreferences() {
   saveCreatePreferences('bilibili', {
     promptId: selectedPromptId.value,
     formats: selectedFormats.value,
-    gpuAccelerated: gpuAccelerated.value,
   })
 }
 
@@ -79,30 +85,32 @@ function restoreCreatePreferences() {
   if (Array.isArray(stored.formats)) {
     selectedFormats.value = stored.formats.filter((item): item is NoteFormat => ALLOWED_FORMATS.has(item as NoteFormat))
   }
-  if (typeof stored.gpuAccelerated === 'boolean') {
-    gpuAccelerated.value = stored.gpuAccelerated
-    hasStoredGpuPreference.value = true
-  }
 }
 
 async function loadLocalTranscriberConfig() {
   try {
     const response = await api.getLocalTranscriber()
     localTranscriberConfig.value = response.data
-    if (!hasStoredGpuPreference.value) {
-      gpuAccelerated.value = response.data.device === 'cuda'
-    }
+    syncingGpuFromConfig.value = true
+    gpuAccelerated.value = response.data.device === 'cuda'
   } catch {
     // 静默失败，使用默认值
+  } finally {
+    syncingGpuFromConfig.value = false
   }
 }
 
 async function updateGpuDevice(enabled: boolean) {
   if (!localTranscriberConfig.value) return
-  
+  if (enabled && !cudaSelectable.value) {
+    ElMessage.warning('请先在集成配置完成 CUDA 检测并保存 CUDA 设备后再启用')
+    gpuAccelerated.value = false
+    return
+  }
+
   const newDevice = enabled ? 'cuda' : 'cpu'
   if (localTranscriberConfig.value.device === newDevice) return
-  
+
   try {
     await api.updateLocalTranscriber({
       ...localTranscriberConfig.value,
@@ -110,15 +118,24 @@ async function updateGpuDevice(enabled: boolean) {
     })
     localTranscriberConfig.value.device = newDevice
   } catch (error) {
-    ElMessage.error((error as { message?: string }).message ?? '更新GPU设置失败')
+    ElMessage.error((error as { message?: string }).message ?? '更新 Cuda 设置失败')
     gpuAccelerated.value = !enabled
   }
 }
 
 watch(gpuAccelerated, (newValue) => {
+  if (syncingGpuFromConfig.value) {
+    return
+  }
   persistCreatePreferences()
   void updateGpuDevice(newValue)
 })
+
+function handleCudaCheckboxClick() {
+  if (!cudaSelectable.value) {
+    ElMessage.warning('请先在“集成配置”中检测 CUDA 并保存为 CUDA 设备')
+  }
+}
 
 watch(selectedPromptId, () => {
   persistCreatePreferences()
@@ -351,13 +368,22 @@ onBeforeUnmount(() => {
 <template>
   <div class="create-page-stack">
     <div class="create-page-hero reveal-step-1">
-      <h2 class="page-block-title">B站链接生成笔记</h2>
-      <p class="page-desc">输入 B 站链接并选择模型后，开始生成并进入任务页查看进度</p>
+      <h2 class="page-block-title">
+        B站链接生成笔记
+      </h2>
+      <p class="page-desc">
+        输入 B 站链接并选择模型后，开始生成并进入任务页查看进度
+      </p>
     </div>
 
     <div class="create-workspace create-workspace--bili reveal-step-2">
-      <el-card class="page-block create-main-panel" shadow="never">
-        <el-text tag="strong">视频链接（支持多行）</el-text>
+      <el-card
+        class="page-block create-main-panel"
+        shadow="never"
+      >
+        <el-text tag="strong">
+          视频链接（支持多行）
+        </el-text>
         <ol class="field-intro-list">
           <li>每行输入 1 个 B 站链接，或用空格、逗号分隔多个链接</li>
           <li>支持批量页码：将链接改为 p=27-30 可自动展开</li>
@@ -372,47 +398,146 @@ onBeforeUnmount(() => {
             placeholder="支持一行一个链接，也支持空格/逗号分隔&#10;生成前会自动校验链接合法性"
           />
         </div>
-        <el-alert v-if="urlError" class="field-alert" type="error" :closable="false" :title="urlError" show-icon />
-        <el-text size="small" type="info">将按系统配置默认项生成；若无可用模型，请先前往系统配置 > 模型配置启用模型</el-text>
+        <el-alert
+          v-if="urlError"
+          class="field-alert"
+          type="error"
+          :closable="false"
+          :title="urlError"
+          show-icon
+        />
+        <el-text
+          size="small"
+          type="info"
+        >
+          将按系统配置默认项生成；若无可用模型，请先前往系统配置 > 模型配置启用模型
+        </el-text>
       </el-card>
 
-      <el-card class="page-block create-side-panel note-preference-card" shadow="never">
+      <el-card
+        class="page-block create-side-panel note-preference-card"
+        shadow="never"
+      >
         <div class="note-options-grid">
           <div class="create-option-row">
             <div class="option-title-row">
-              <el-text tag="strong">提示词</el-text>
-              <el-tag size="small" effect="plain" type="success">可选增强</el-tag>
+              <el-text tag="strong">
+                提示词
+              </el-text>
+              <el-tag
+                size="small"
+                effect="plain"
+                type="success"
+              >
+                可选增强
+              </el-tag>
             </div>
-            <el-select v-model="selectedPromptId" clearable placeholder="默认（使用系统默认提示词）">
-              <el-option v-for="item in promptSelectOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-select
+              v-model="selectedPromptId"
+              clearable
+              placeholder="默认（使用系统默认提示词）"
+            >
+              <el-option
+                v-for="item in promptSelectOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-select>
-            <el-text size="small" type="info">支持按场景切换模板内容，如精简、详细或小红书风格</el-text>
+            <el-text
+              size="small"
+              type="info"
+            >
+              支持按场景切换模板内容，如精简、详细或小红书风格
+            </el-text>
           </div>
           <div class="create-option-row">
             <div class="option-title-row">
-              <el-text tag="strong">笔记格式</el-text>
-              <el-tag size="small" effect="plain">输出控制</el-tag>
+              <el-text tag="strong">
+                笔记格式
+              </el-text>
+              <el-tag
+                size="small"
+                effect="plain"
+              >
+                输出控制
+              </el-tag>
             </div>
-            <el-checkbox-group v-model="selectedFormats" class="note-format-checks">
-              <el-checkbox v-for="item in noteFormatOptions" :key="item.value" :label="item.value">{{ item.label }}</el-checkbox>
+            <el-checkbox-group
+              v-model="selectedFormats"
+              class="note-format-checks"
+            >
+              <el-checkbox
+                v-for="item in noteFormatOptions"
+                :key="item.value"
+                :label="item.value"
+              >
+                {{ item.label }}
+              </el-checkbox>
             </el-checkbox-group>
-            <el-text size="small" type="info">目录用于快速跳读；原片截图会自动替换为对应时间点图片</el-text>
+            <el-text
+              size="small"
+              type="info"
+            >
+              目录用于快速跳读；原片截图会自动替换为对应时间点图片
+            </el-text>
           </div>
           <div class="create-option-row">
             <div class="option-title-row">
-              <el-text tag="strong">硬件加速</el-text>
-              <el-tag size="small" effect="plain" type="warning">性能优化</el-tag>
+              <el-text tag="strong">
+                硬件加速
+              </el-text>
+              <el-tag
+                size="small"
+                effect="plain"
+                type="warning"
+              >
+                性能优化
+              </el-tag>
             </div>
-            <el-checkbox v-model="gpuAccelerated" class="gpu-accelerate-check">启用 GPU 加速</el-checkbox>
-            <el-text size="small" type="info">使用显卡加速视频处理，可显著提升生成速度</el-text>
+            <div
+              class="cuda-toggle-wrap"
+              :class="{ 'is-disabled': !cudaSelectable }"
+              @click="handleCudaCheckboxClick"
+            >
+              <el-checkbox
+                v-model="gpuAccelerated"
+                class="gpu-accelerate-check"
+                :disabled="!cudaSelectable"
+              >
+                启用 Cuda 加速
+              </el-checkbox>
+            </div>
+            <el-text
+              size="small"
+              type="info"
+            >
+              使用显卡加速视频处理，可显著提升生成速度
+            </el-text>
           </div>
         </div>
         <div class="note-generate-action">
-          <el-button :type="generateButtonType" size="large" :loading="generating" @click="handleGenerate">
-            <el-icon v-if="activeTaskId" class="generate-status-icon is-rotating"><Loading /></el-icon>
+          <el-button
+            :type="generateButtonType"
+            size="large"
+            :loading="generating"
+            @click="handleGenerate"
+          >
+            <el-icon
+              v-if="activeTaskId"
+              class="generate-status-icon is-rotating"
+            >
+              <Loading />
+            </el-icon>
             {{ generateButtonLabel }}
           </el-button>
-          <el-text size="small" type="info" class="generate-hint">建议：长视频勾选"目录"；教程类内容可搭配"原片截图"</el-text>
+          <el-text
+            size="small"
+            type="info"
+            class="generate-hint"
+          >
+            建议：长视频勾选"目录"；教程类内容可搭配"原片截图"
+          </el-text>
         </div>
       </el-card>
     </div>
@@ -498,6 +623,11 @@ onBeforeUnmount(() => {
 .gpu-accelerate-check.is-checked {
   border-color: var(--accent);
   background: rgba(214, 158, 46, 0.05);
+}
+
+.cuda-toggle-wrap.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .create-generate-row {

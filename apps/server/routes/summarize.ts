@@ -8,13 +8,15 @@
  * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 7.1, 7.2, 7.3
  */
 
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+
+import { BILIBILI_URL_PATTERN } from '../constants/index.js';
 import {
   loadSummaryPipelineConfig,
   createSummaryPipeline,
   type SummaryPipeline,
 } from '../services/summary-pipeline.js';
-import { BILIBILI_URL_PATTERN } from '../constants/index.js';
+import type { Request, Response } from 'express';
 
 /**
  * Request body interface for POST /api/summarize
@@ -273,4 +275,3 @@ export function createSummarizeRouter(): Router {
 
   return router;
 }
-

@@ -15,7 +15,6 @@ type SourceType = 'bilibili' | 'web'
 export type CreatePreferences = {
   promptId?: string
   formats?: string[]
-  gpuAccelerated?: boolean
   includeToc?: boolean
 }
 
@@ -162,9 +161,6 @@ export function readCreatePreferences(sourceType: SourceType): CreatePreferences
     }
     if (Array.isArray(data.formats)) {
       preferences.formats = data.formats.filter((item): item is string => typeof item === 'string')
-    }
-    if (typeof data.gpuAccelerated === 'boolean') {
-      preferences.gpuAccelerated = data.gpuAccelerated
     }
     if (typeof data.includeToc === 'boolean') {
       preferences.includeToc = data.includeToc

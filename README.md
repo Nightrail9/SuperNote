@@ -55,6 +55,13 @@ Windows PowerShell：
 Copy-Item .env.example .env
 ```
 
+模型配置统一通过 `.env` 管理：
+
+- `AI_MODELS_JSON`：模型数组 JSON（单行）
+- `AI_DEFAULT_MODEL_ID`：默认模型 ID
+
+在页面「设置 > 模型配置」保存后，后端会自动回写这两个字段到 `.env`。
+
 ### 4. 启动服务
 
 后端：

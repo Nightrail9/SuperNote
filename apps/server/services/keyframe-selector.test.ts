@@ -1,9 +1,9 @@
+import type { VideoUnderstandingConfigRecord } from './app-data-store.js';
 import {
   deriveAdaptiveConfig,
   getDurationProfile,
   hammingDistance,
 } from './keyframe-selector.js';
-import type { VideoUnderstandingConfigRecord } from './app-data-store.js';
 
 let passed = 0;
 let failed = 0;

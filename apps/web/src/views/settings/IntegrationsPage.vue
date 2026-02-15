@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
-import PageBlock from '../../components/PageBlock.vue'
+import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+
 import { api } from '../../api/modules'
+import PageBlock from '../../components/PageBlock.vue'
 import type { IntegrationConfig, LocalTranscriberConfig, VideoUnderstandingConfig, VideoUnderstandingPreset } from '../../types/domain'
 
 const loading = ref(false)
@@ -20,7 +21,8 @@ const envResults = ref<{
 const activePresetId = ref('medium_balanced')
 
 const MODEL_OPTIONS = ['tiny', 'base', 'small', 'medium', 'large-v3'] as const
-const LANGUAGE_OPTIONS = ['zh', 'en', 'auto'] as const
+const LANGUAGE_OPTIONS = ['zh', 'en'] as const
+const DEVICE_OPTIONS = ['cpu', 'cuda'] as const
 const PRESET_ORDER = ['short_dense', 'medium_balanced', 'long_efficient'] as const
 
 const integrations = reactive<IntegrationConfig>({
@@ -38,7 +40,10 @@ const localTranscriber = reactive<LocalTranscriberConfig>({
   ffmpegBin: 'tools/ffmpeg/bin/ffmpeg.exe',
   model: 'small',
   language: 'zh',
-  device: 'auto',
+  device: 'cpu',
+  cudaChecked: false,
+  cudaAvailable: false,
+  cudaEnabledOnce: false,
   beamSize: 5,
   temperature: 0,
   timeoutMs: 1800000,
@@ -72,6 +77,9 @@ function normalizeLocalTranscriberSelections() {
   if (!LANGUAGE_OPTIONS.includes(localTranscriber.language as (typeof LANGUAGE_OPTIONS)[number])) {
     localTranscriber.language = 'zh'
   }
+  if (!DEVICE_OPTIONS.includes(localTranscriber.device as (typeof DEVICE_OPTIONS)[number])) {
+    localTranscriber.device = 'cpu'
+  }
 }
 
 function getLocalTranscriberEditablePayload() {
@@ -84,8 +92,6 @@ function getLocalTranscriberEditablePayload() {
     timeoutMs: localTranscriber.timeoutMs,
   }
 }
-
-
 
 const videoQualityLabel = computed(() => {
   if (!videoForm.enabled) return '已关闭'
@@ -174,10 +180,22 @@ async function testLocalTranscriber() {
 }
 
 async function saveLocalTranscriber() {
+  if (localTranscriber.device === 'cuda' && !localTranscriber.cudaChecked) {
+    ElMessage.warning('请先点击“检测环境 (CUDA/FFmpeg)”完成 CUDA 检测，再保存 CUDA 配置')
+    return
+  }
+  if (localTranscriber.device === 'cuda' && !localTranscriber.cudaAvailable) {
+    ElMessage.warning('当前环境未检测到可用 CUDA，请先排查驱动和运行时后再保存 CUDA')
+    return
+  }
+
   savingLocal.value = true
   try {
     const response = await api.updateLocalTranscriber(getLocalTranscriberEditablePayload())
     ElMessage.success(response.data.message ?? '本地转写配置已保存')
+    if (localTranscriber.device === 'cuda') {
+      localTranscriber.cudaEnabledOnce = true
+    }
   } catch (error) {
     ElMessage.error((error as { message?: string }).message ?? '保存本地转写配置失败')
   } finally {
@@ -190,6 +208,8 @@ async function checkEnv() {
   try {
     const response = await api.envCheck()
     envResults.value = response.data
+    localTranscriber.cudaChecked = true
+    localTranscriber.cudaAvailable = Boolean(response.data.cuda.ok)
     if (response.data.cuda.ok) {
       ElMessage.success('检测到 CUDA 可用！')
     } else {
@@ -208,8 +228,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <PageBlock title="本地引擎与集成" description="网页模式 + 本地转写 + 关键帧策略" header-outside show-author-info>
-    <div class="settings-layout" v-loading="loading">
+  <PageBlock
+    title="本地引擎与集成"
+    description="网页模式 + 本地转写 + 关键帧策略"
+    header-outside
+    show-author-info
+  >
+    <div
+      v-loading="loading"
+      class="settings-layout"
+    >
       <section class="hero-panel">
         <div class="hero-copy">
           <h3>纯本地视频链路已启用</h3>
@@ -242,24 +270,53 @@ onMounted(() => {
         <div class="form-grid two-col">
           <div class="field-item">
             <label>Endpoint</label>
-            <input v-model="integrations.jinaReader.endpoint" class="form-input" placeholder="https://r.jina.ai/" />
+            <input
+              v-model="integrations.jinaReader.endpoint"
+              class="form-input"
+              placeholder="https://r.jina.ai/"
+            >
           </div>
           <div class="field-item">
             <label>API Key（可选）</label>
-            <input v-model="integrations.jinaReader.apiKey" class="form-input" placeholder="jina_xxx" />
+            <input
+              v-model="integrations.jinaReader.apiKey"
+              class="form-input"
+              placeholder="jina_xxx"
+            >
           </div>
           <div class="field-item compact">
             <label>Timeout (秒)</label>
-            <el-input-number v-model="integrations.jinaReader.timeoutSec" :min="3" :max="180" :step="1" />
+            <el-input-number
+              v-model="integrations.jinaReader.timeoutSec"
+              :min="3"
+              :max="180"
+              :step="1"
+            />
           </div>
           <div class="field-item compact">
             <label>缓存策略</label>
-            <el-switch v-model="integrations.jinaReader.noCache" active-text="绕过缓存" inactive-text="允许缓存" />
+            <el-switch
+              v-model="integrations.jinaReader.noCache"
+              active-text="绕过缓存"
+              inactive-text="允许缓存"
+            />
           </div>
         </div>
         <div class="action-row right">
-          <el-button plain :loading="testingJina" @click="testJina">测试连接</el-button>
-          <el-button type="primary" :loading="savingJina" @click="saveJina">保存配置</el-button>
+          <el-button
+            plain
+            :loading="testingJina"
+            @click="testJina"
+          >
+            测试连接
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="savingJina"
+            @click="saveJina"
+          >
+            保存配置
+          </el-button>
         </div>
       </section>
 
@@ -280,57 +337,126 @@ onMounted(() => {
         <div class="form-grid three-col">
           <div class="field-item">
             <label>模型</label>
-            <el-select v-model="localTranscriber.model" style="width: 100%">
-              <el-option v-for="model in MODEL_OPTIONS" :key="model" :label="model" :value="model" />
+            <el-select
+              v-model="localTranscriber.model"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="model in MODEL_OPTIONS"
+                :key="model"
+                :label="model"
+                :value="model"
+              />
             </el-select>
           </div>
           <div class="field-item">
             <label>语言</label>
-            <el-select v-model="localTranscriber.language" style="width: 100%">
-              <el-option label="zh" value="zh" />
-              <el-option label="en" value="en" />
-              <el-option label="auto" value="auto" />
+            <el-select
+              v-model="localTranscriber.language"
+              style="width: 100%"
+            >
+              <el-option
+                label="zh"
+                value="zh"
+              />
+              <el-option
+                label="en"
+                value="en"
+              />
             </el-select>
           </div>
           <div class="field-item">
             <label>设备</label>
-            <el-select v-model="localTranscriber.device" style="width: 100%">
-              <el-option label="auto" value="auto" />
-              <el-option label="cpu" value="cpu" />
-              <el-option label="cuda" value="cuda" />
+            <el-select
+              v-model="localTranscriber.device"
+              style="width: 100%"
+            >
+              <el-option
+                label="cpu"
+                value="cpu"
+              />
+              <el-option
+                label="cuda"
+                value="cuda"
+              />
             </el-select>
           </div>
           <div class="field-item">
             <label>beam size</label>
-            <el-input-number v-model="localTranscriber.beamSize" :min="1" :max="10" :step="1" />
+            <el-input-number
+              v-model="localTranscriber.beamSize"
+              :min="1"
+              :max="10"
+              :step="1"
+            />
           </div>
           <div class="field-item">
             <label>temperature</label>
-            <el-input-number v-model="localTranscriber.temperature" :min="0" :max="1" :step="0.1" />
+            <el-input-number
+              v-model="localTranscriber.temperature"
+              :min="0"
+              :max="1"
+              :step="0.1"
+            />
           </div>
           <div class="field-item">
             <label>超时 (ms)</label>
-            <el-input-number v-model="localTranscriber.timeoutMs" :min="30000" :max="1800000" :step="1000" />
+            <el-input-number
+              v-model="localTranscriber.timeoutMs"
+              :min="30000"
+              :max="1800000"
+              :step="1000"
+            />
           </div>
         </div>
-        <div v-if="envResults" class="env-check-results">
-          <div class="env-item" :class="{ ok: envResults.ffmpeg.ok }">
+        <div
+          v-if="envResults"
+          class="env-check-results"
+        >
+          <div
+            class="env-item"
+            :class="{ ok: envResults.ffmpeg.ok }"
+          >
             <span class="env-label">FFmpeg:</span>
             <span class="env-val">{{ envResults.ffmpeg.ok ? envResults.ffmpeg.version : '未找到' }}</span>
           </div>
-          <div class="env-item" :class="{ ok: envResults.whisper.ok }">
+          <div
+            class="env-item"
+            :class="{ ok: envResults.whisper.ok }"
+          >
             <span class="env-label">Whisper:</span>
             <span class="env-val">{{ envResults.whisper.ok ? envResults.whisper.version : '未找到' }}</span>
           </div>
-          <div class="env-item" :class="{ ok: envResults.cuda.ok }">
+          <div
+            class="env-item"
+            :class="{ ok: envResults.cuda.ok }"
+          >
             <span class="env-label">CUDA 加速:</span>
             <span class="env-val">{{ envResults.cuda.details }}</span>
           </div>
         </div>
         <div class="action-row right">
-          <el-button plain :loading="checkingEnv" @click="checkEnv">检测环境 (CUDA/FFmpeg)</el-button>
-          <el-button plain :loading="testingLocal" @click="testLocalTranscriber">测试转写命令</el-button>
-          <el-button type="primary" :loading="savingLocal" @click="saveLocalTranscriber">保存配置</el-button>
+          <el-button
+            plain
+            :loading="checkingEnv"
+            @click="checkEnv"
+          >
+            检测环境 (CUDA/FFmpeg)
+          </el-button>
+          <el-button
+            plain
+            :loading="testingLocal"
+            @click="testLocalTranscriber"
+          >
+            测试转写命令
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="savingLocal"
+            @click="saveLocalTranscriber"
+          >
+            保存配置
+          </el-button>
         </div>
       </section>
 

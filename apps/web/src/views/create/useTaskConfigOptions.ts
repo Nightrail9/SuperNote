@@ -1,9 +1,10 @@
-import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { computed, ref } from 'vue'
+
 import { api } from '../../api/modules'
-import { filterModelOptions, filterPromptOptions } from '../../utils/dropdownHelpers'
 import type { ModelConfig, PromptConfig } from '../../types/domain'
 import { toArrayData } from '../../utils/api-data'
+import { filterModelOptions, filterPromptOptions } from '../../utils/dropdownHelpers'
 
 function resolveDefaultId(options: Array<{ value: string }>, items: Array<{ id: string; isDefault?: boolean }>): string | undefined {
   if (!options.length) return undefined

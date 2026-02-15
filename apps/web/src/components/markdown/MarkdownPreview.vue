@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref } from 'vue'
 import { MdPreview } from 'md-editor-v3'
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = defineProps<{
   source: string
@@ -127,7 +127,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="previewRoot" class="markdown-preview-root">
-    <MdPreview :editor-id="editorId" :model-value="resolvedSource" preview-theme="default" />
+  <div
+    ref="previewRoot"
+    class="markdown-preview-root"
+  >
+    <MdPreview
+      :editor-id="editorId"
+      :model-value="resolvedSource"
+      preview-theme="default"
+    />
   </div>
 </template>

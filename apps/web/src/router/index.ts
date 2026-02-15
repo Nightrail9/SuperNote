@@ -1,5 +1,6 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { Edit, Files, Document, Clock, Setting, Tools } from '@element-plus/icons-vue'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+
 import AppShell from '../layout/AppShell.vue'
 
 export type AppMenuItem = {

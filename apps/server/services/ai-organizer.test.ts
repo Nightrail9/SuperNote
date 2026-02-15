@@ -11,6 +11,7 @@
  */
 
 import fc from 'fast-check';
+
 import { extractContent } from './ai-organizer.js';
 
 // ============================================================================

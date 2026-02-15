@@ -1,4 +1,5 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+
 import {
   createId,
   getAppData,
@@ -9,6 +10,7 @@ import {
 } from '../services/app-data-store.js';
 import { sendApiError, toErrorMessage } from '../utils/http-error.js';
 import { parsePositiveInt } from '../utils/validation.js';
+import type { Request, Response } from 'express';
 
 export function createDraftsRouter(): Router {
   const router = Router();

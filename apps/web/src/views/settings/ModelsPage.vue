@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import PageBlock from '../../components/PageBlock.vue'
+import { computed, onMounted, ref } from 'vue'
+
 import { api } from '../../api/modules'
+import PageBlock from '../../components/PageBlock.vue'
 import type { ModelConfig, ModelProvider } from '../../types/domain'
 import { toArrayData } from '../../utils/api-data'
 
@@ -323,63 +324,153 @@ onMounted(() => {
 </script>
 
 <template>
-  <PageBlock title="模型配置" description="配置模型服务、默认模型与连接状态，供生成流程统一调用" header-outside show-author-info>
-    <div class="settings-page" v-loading="loading">
+  <PageBlock
+    title="模型配置"
+    description="配置模型服务、默认模型与连接状态，供生成流程统一调用"
+    header-outside
+    show-author-info
+  >
+    <div
+      v-loading="loading"
+      class="settings-page"
+    >
       <section class="section-block">
         <div class="section-head">
           <div>
-            <p class="section-title">模型服务配置</p>
-            <p class="section-desc">支持多服务管理、激活默认、编辑、删除和连接测试</p>
+            <p class="section-title">
+              模型服务配置
+            </p>
+            <p class="section-desc">
+              支持多服务管理、激活默认、编辑、删除和连接测试
+            </p>
           </div>
-          <el-button type="primary" :loading="saving" @click="openCreateModelModal">添加模型</el-button>
+          <el-button
+            type="primary"
+            :loading="saving"
+            @click="openCreateModelModal"
+          >
+            添加模型
+          </el-button>
         </div>
 
         <div class="provider-table">
           <div class="table-header">
-            <div class="col-status">状态</div>
-            <div class="col-name">名称</div>
-            <div class="col-provider">类型</div>
-            <div class="col-model">模型</div>
-            <div class="col-apikey">API Key</div>
-            <div class="col-actions">操作</div>
+            <div class="col-status">
+              状态
+            </div>
+            <div class="col-name">
+              名称
+            </div>
+            <div class="col-provider">
+              类型
+            </div>
+            <div class="col-model">
+              模型
+            </div>
+            <div class="col-apikey">
+              API Key
+            </div>
+            <div class="col-actions">
+              操作
+            </div>
           </div>
 
-          <div v-for="item in orderedModels" :key="item.id" class="table-row" :class="{ active: item.isDefault }">
+          <div
+            v-for="item in orderedModels"
+            :key="item.id"
+            class="table-row"
+            :class="{ active: item.isDefault }"
+          >
             <div class="col-status">
-              <button class="btn-activate" :class="{ active: item.isDefault }" @click="activateModel(item.id)" :disabled="item.isDefault || saving">
+              <button
+                class="btn-activate"
+                :class="{ active: item.isDefault }"
+                :disabled="item.isDefault || saving"
+                @click="activateModel(item.id)"
+              >
                 {{ item.isDefault ? '已激活' : '激活' }}
               </button>
             </div>
 
-            <div class="col-name"><span class="provider-name">{{ item.id }}</span></div>
-            <div class="col-provider"><span class="provider-type">{{ providerLabelMap[item.provider] }}</span></div>
-            <div class="col-model"><span class="model-name">{{ item.modelName || '未配置' }}</span></div>
+            <div class="col-name">
+              <span class="provider-name">{{ item.id }}</span>
+            </div>
+            <div class="col-provider">
+              <span class="provider-type">{{ providerLabelMap[item.provider] }}</span>
+            </div>
+            <div class="col-model">
+              <span class="model-name">{{ item.modelName || '未配置' }}</span>
+            </div>
             <div class="col-apikey">
-              <span class="apikey-masked" :class="{ empty: !item.apiKeyMasked }">{{ item.apiKeyMasked || '未配置' }}</span>
+              <span
+                class="apikey-masked"
+                :class="{ empty: !item.apiKeyMasked }"
+              >{{ item.apiKeyMasked || '未配置' }}</span>
             </div>
 
             <div class="col-actions">
-              <button class="btn-icon" @click="testModelInList(item)" :disabled="saving || testingListId === item.id" title="测试连接">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              <button
+                class="btn-icon"
+                :disabled="saving || testingListId === item.id"
+                title="测试连接"
+                @click="testModelInList(item)"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
               </button>
-              <button class="btn-icon" @click="openEditModelModal(item)" :disabled="saving" title="编辑">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              <button
+                class="btn-icon"
+                :disabled="saving"
+                title="编辑"
+                @click="openEditModelModal(item)"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
               </button>
-              <button class="btn-icon danger" @click="deleteModel(item.id)" :disabled="saving || models.length <= 1" title="删除">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <button
+                class="btn-icon danger"
+                :disabled="saving || models.length <= 1"
+                title="删除"
+                @click="deleteModel(item.id)"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg>
               </button>
             </div>
           </div>
 
-          <div v-if="models.length === 0" class="empty-hint">暂无模型配置，请先添加</div>
+          <div
+            v-if="models.length === 0"
+            class="empty-hint"
+          >
+            暂无模型配置，请先添加
+          </div>
         </div>
       </section>
     </div>
@@ -397,14 +488,30 @@ onMounted(() => {
       <div class="modal-body">
         <div class="form-group">
           <label>服务名称</label>
-          <input type="text" class="form-input" :value="modelForm.id" @input="updateModelForm('id', ($event.target as HTMLInputElement).value)" placeholder="例如: openai-prod" />
+          <input
+            type="text"
+            class="form-input"
+            :value="modelForm.id"
+            placeholder="例如: openai-prod"
+            @input="updateModelForm('id', ($event.target as HTMLInputElement).value)"
+          >
           <span class="form-hint">唯一标识，用于区分不同模型服务</span>
         </div>
 
         <div class="form-group">
           <label>类型</label>
-          <select class="form-select" :value="modelForm.provider" @change="updateModelForm('provider', ($event.target as HTMLSelectElement).value as ModelProvider)">
-            <option v-for="opt in providerOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          <select
+            class="form-select"
+            :value="modelForm.provider"
+            @change="updateModelForm('provider', ($event.target as HTMLSelectElement).value as ModelProvider)"
+          >
+            <option
+              v-for="opt in providerOptions"
+              :key="opt.value"
+              :value="opt.value"
+            >
+              {{ opt.label }}
+            </option>
           </select>
         </div>
 
@@ -414,28 +521,50 @@ onMounted(() => {
             type="text"
             class="form-input"
             :value="modelForm.apiKey"
-            @input="updateModelForm('apiKey', ($event.target as HTMLInputElement).value)"
             :placeholder="modelEditingId && modelForm.hasApiKey ? modelForm.apiKeyMasked : '输入 API Key'"
-          />
-          <span class="form-hint" v-if="modelEditingId && modelForm.hasApiKey">已配置 API Key，留空表示不修改</span>
+            @input="updateModelForm('apiKey', ($event.target as HTMLInputElement).value)"
+          >
+          <span
+            v-if="modelEditingId && modelForm.hasApiKey"
+            class="form-hint"
+          >已配置 API Key，留空表示不修改</span>
         </div>
 
         <div class="form-group">
           <label>Base URL</label>
-          <input type="text" class="form-input" :value="modelForm.baseUrl" @input="updateModelForm('baseUrl', ($event.target as HTMLInputElement).value)" :placeholder="baseUrlPlaceholder" />
-          <span class="form-hint" v-if="requestPreviewUrl">预览: {{ requestPreviewUrl }}</span>
+          <input
+            type="text"
+            class="form-input"
+            :value="modelForm.baseUrl"
+            :placeholder="baseUrlPlaceholder"
+            @input="updateModelForm('baseUrl', ($event.target as HTMLInputElement).value)"
+          >
+          <span
+            v-if="requestPreviewUrl"
+            class="form-hint"
+          >预览: {{ requestPreviewUrl }}</span>
         </div>
 
         <div class="form-group">
           <label>模型</label>
-          <input type="text" class="form-input" :value="modelForm.modelName" @input="updateModelForm('modelName', ($event.target as HTMLInputElement).value)" :placeholder="modelPlaceholder" />
+          <input
+            type="text"
+            class="form-input"
+            :value="modelForm.modelName"
+            :placeholder="modelPlaceholder"
+            @input="updateModelForm('modelName', ($event.target as HTMLInputElement).value)"
+          >
         </div>
 
         <div class="form-group">
           <label class="toggle-label">
             <span>启用状态</span>
-            <div class="toggle-switch" :class="{ active: modelForm.enabled }" @click="updateModelForm('enabled', !modelForm.enabled)">
-              <div class="toggle-slider"></div>
+            <div
+              class="toggle-switch"
+              :class="{ active: modelForm.enabled }"
+              @click="updateModelForm('enabled', !modelForm.enabled)"
+            >
+              <div class="toggle-slider" />
             </div>
           </label>
         </div>
@@ -443,8 +572,12 @@ onMounted(() => {
         <div class="form-group">
           <label class="toggle-label">
             <span>设为默认</span>
-            <div class="toggle-switch" :class="{ active: modelForm.isDefault }" @click="updateModelForm('isDefault', !modelForm.isDefault)">
-              <div class="toggle-slider"></div>
+            <div
+              class="toggle-switch"
+              :class="{ active: modelForm.isDefault }"
+              @click="updateModelForm('isDefault', !modelForm.isDefault)"
+            >
+              <div class="toggle-slider" />
             </div>
           </label>
         </div>
@@ -452,9 +585,22 @@ onMounted(() => {
 
       <template #footer>
         <div class="modal-footer">
-          <el-button @click="closeModelModal">取消</el-button>
-          <el-button :loading="testing" @click="testModelInModal">测试连接</el-button>
-          <el-button type="primary" :loading="saving" @click="saveModel">保存</el-button>
+          <el-button @click="closeModelModal">
+            取消
+          </el-button>
+          <el-button
+            :loading="testing"
+            @click="testModelInModal"
+          >
+            测试连接
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="saving"
+            @click="saveModel"
+          >
+            保存
+          </el-button>
         </div>
       </template>
     </el-dialog>

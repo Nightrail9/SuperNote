@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import { Delete, Edit, Promotion, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+import { DRAFT_TABLE_COLUMNS, HISTORY_FIXED_BODY_ROWS, HISTORY_PAGE_SIZE, resolveSourceLabel } from './table-config'
 import { api } from '../../api/modules'
-import PageBlock from '../../components/PageBlock.vue'
 import HistoryResizableTable from '../../components/history/HistoryResizableTable.vue'
+import PageBlock from '../../components/PageBlock.vue'
 import type { Draft } from '../../types/domain'
 import { formatDateTime } from '../../utils/datetime'
 import { buildPageKeywordQuery, resolveRowIndexById } from '../../utils/list'
-import { DRAFT_TABLE_COLUMNS, HISTORY_FIXED_BODY_ROWS, HISTORY_PAGE_SIZE, resolveSourceLabel } from './table-config'
 
 const MarkdownPreview = defineAsyncComponent(() => import('../../components/markdown/MarkdownPreview.vue'))
 const MarkdownEditor = defineAsyncComponent(() => import('../../components/markdown/MarkdownEditor.vue'))
@@ -212,21 +213,52 @@ onMounted(() => {
 </script>
 
 <template>
-  <PageBlock title="笔记草稿箱" description="支持恢复编辑、预览、发布为笔记和删除" header-outside show-author-info>
+  <PageBlock
+    title="笔记草稿箱"
+    description="支持恢复编辑、预览、发布为笔记和删除"
+    header-outside
+    show-author-info
+  >
     <div class="page-toolbar">
       <el-space>
-        <el-text tag="strong">搜索草稿</el-text>
-        <el-input v-model="searchInput" class="search-input" placeholder="搜索草稿..." @keyup.enter="updateQuery({ page: 1, keyword: searchInput })" />
-        <el-button @click="updateQuery({ page: 1, keyword: searchInput })">搜索</el-button>
-        <el-tag type="info">当前草稿数：{{ total }}</el-tag>
+        <el-text tag="strong">
+          搜索草稿
+        </el-text>
+        <el-input
+          v-model="searchInput"
+          class="search-input"
+          placeholder="搜索草稿..."
+          @keyup.enter="updateQuery({ page: 1, keyword: searchInput })"
+        />
+        <el-button @click="updateQuery({ page: 1, keyword: searchInput })">
+          搜索
+        </el-button>
+        <el-tag type="info">
+          当前草稿数：{{ total }}
+        </el-tag>
       </el-space>
-      <el-button @click="updateQuery({ page: 1, keyword: '' })">重置</el-button>
+      <el-button @click="updateQuery({ page: 1, keyword: '' })">
+        重置
+      </el-button>
     </div>
 
     <div class="panel-stats">
-      <el-tag type="info" effect="dark">总草稿 {{ total }}</el-tag>
-      <el-tag effect="plain">第 {{ page }} 页 / 每页 {{ pageSize }} 条</el-tag>
-      <el-tag v-if="keyword" type="warning" effect="plain">关键词：{{ keyword }}</el-tag>
+      <el-tag
+        type="info"
+        effect="dark"
+      >
+        总草稿 {{ total }}
+      </el-tag>
+      <el-tag effect="plain">
+        第 {{ page }} 页 / 每页 {{ pageSize }} 条
+      </el-tag>
+      <el-tag
+        v-if="keyword"
+        type="warning"
+        effect="plain"
+      >
+        关键词：{{ keyword }}
+      </el-tag>
     </div>
 
     <div class="history-table-wrap">
@@ -248,10 +280,28 @@ onMounted(() => {
         </template>
         <template #cell-actions="{ row, index }">
           <div class="table-actions">
-            <el-button :icon="View" link @click="openPreview(index, row.id)" />
-            <el-button :icon="Edit" link @click="openEdit(index, row.id)" />
-            <el-button :icon="Promotion" link :loading="publishLoading" @click="publishDraft(toDraft(row))" />
-            <el-button :icon="Delete" link type="danger" @click="removeDraft(row.id)" />
+            <el-button
+              :icon="View"
+              link
+              @click="openPreview(index, row.id)"
+            />
+            <el-button
+              :icon="Edit"
+              link
+              @click="openEdit(index, row.id)"
+            />
+            <el-button
+              :icon="Promotion"
+              link
+              :loading="publishLoading"
+              @click="publishDraft(toDraft(row))"
+            />
+            <el-button
+              :icon="Delete"
+              link
+              type="danger"
+              @click="removeDraft(row.id)"
+            />
           </div>
         </template>
       </HistoryResizableTable>
@@ -278,17 +328,47 @@ onMounted(() => {
       :close-on-click-modal="false"
       @closed="closePreview"
     >
-      <el-card shadow="never" class="history-preview-card">
+      <el-card
+        shadow="never"
+        class="history-preview-card"
+      >
         <div class="history-preview-toolbar">
-          <el-text type="info" class="history-preview-counter">第 {{ activePreviewIndex + 1 }} / {{ filteredItems.length }} 条</el-text>
+          <el-text
+            type="info"
+            class="history-preview-counter"
+          >
+            第 {{ activePreviewIndex + 1 }} / {{ filteredItems.length }} 条
+          </el-text>
           <div class="history-preview-nav">
-            <el-button :disabled="!canPreviewPrev || previewLoading" @click="previewPrev">上一条</el-button>
-            <el-button type="primary" :disabled="!canPreviewNext || previewLoading" @click="previewNext">下一条</el-button>
+            <el-button
+              :disabled="!canPreviewPrev || previewLoading"
+              @click="previewPrev"
+            >
+              上一条
+            </el-button>
+            <el-button
+              type="primary"
+              :disabled="!canPreviewNext || previewLoading"
+              @click="previewNext"
+            >
+              下一条
+            </el-button>
           </div>
         </div>
-        <el-text type="info" class="history-preview-source">来源：{{ resolveSourceLabel(activeDraft?.sourceUrl || '') }}</el-text>
-        <div v-loading="previewLoading" class="history-preview-body">
-          <MarkdownPreview v-if="previewOpen || previewLoading" :source="activeDraft?.contentMd || ''" />
+        <el-text
+          type="info"
+          class="history-preview-source"
+        >
+          来源：{{ resolveSourceLabel(activeDraft?.sourceUrl || '') }}
+        </el-text>
+        <div
+          v-loading="previewLoading"
+          class="history-preview-body"
+        >
+          <MarkdownPreview
+            v-if="previewOpen || previewLoading"
+            :source="activeDraft?.contentMd || ''"
+          />
         </div>
       </el-card>
     </el-dialog>
@@ -305,19 +385,55 @@ onMounted(() => {
       @closed="closeEdit"
     >
       <div class="history-preview-toolbar">
-        <el-text type="info" class="history-preview-counter">第 {{ activeEditIndex + 1 }} / {{ filteredItems.length }} 条</el-text>
+        <el-text
+          type="info"
+          class="history-preview-counter"
+        >
+          第 {{ activeEditIndex + 1 }} / {{ filteredItems.length }} 条
+        </el-text>
         <div class="history-preview-nav">
-          <el-button :disabled="!canEditPrev || editLoading || saveLoading" @click="editPrev">上一条</el-button>
-          <el-button type="primary" :disabled="!canEditNext || editLoading || saveLoading" @click="editNext">下一条</el-button>
+          <el-button
+            :disabled="!canEditPrev || editLoading || saveLoading"
+            @click="editPrev"
+          >
+            上一条
+          </el-button>
+          <el-button
+            type="primary"
+            :disabled="!canEditNext || editLoading || saveLoading"
+            @click="editNext"
+          >
+            下一条
+          </el-button>
         </div>
       </div>
-      <el-space v-loading="editLoading" direction="vertical" class="full-width-stack">
-        <el-input v-model="editTitle" placeholder="草稿标题" />
-        <MarkdownEditor v-if="editingOpen || editLoading" :value="editMarkdown" :height="460" @change="(next) => (editMarkdown = next)" />
+      <el-space
+        v-loading="editLoading"
+        direction="vertical"
+        class="full-width-stack"
+      >
+        <el-input
+          v-model="editTitle"
+          placeholder="草稿标题"
+        />
+        <MarkdownEditor
+          v-if="editingOpen || editLoading"
+          :value="editMarkdown"
+          :height="460"
+          @change="(next) => (editMarkdown = next)"
+        />
       </el-space>
       <template #footer>
-        <el-button @click="closeEdit">取消</el-button>
-        <el-button type="primary" :loading="saveLoading" @click="saveEdit">保存</el-button>
+        <el-button @click="closeEdit">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saveLoading"
+          @click="saveEdit"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </PageBlock>

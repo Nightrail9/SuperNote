@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * BreadcrumbNav - 面包屑导航组件
- * 
+ *
  * 特点：
  * - 自动根据路由生成面包屑
  * - 首页显示
@@ -147,7 +147,10 @@ function navigate(path: string) {
 </script>
 
 <template>
-  <nav class="breadcrumb-nav" aria-label="面包屑导航">
+  <nav
+    class="breadcrumb-nav"
+    aria-label="面包屑导航"
+  >
     <ol class="breadcrumb-list">
       <li
         v-for="(item, index) in breadcrumbs"
@@ -155,9 +158,23 @@ function navigate(path: string) {
         class="breadcrumb-item"
       >
         <!-- 分隔符 -->
-        <span v-if="index > 0" class="breadcrumb-separator">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <span
+          v-if="index > 0"
+          class="breadcrumb-separator"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+          >
+            <path
+              d="M4 2L8 6L4 10"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
           </svg>
         </span>
 
@@ -234,7 +251,7 @@ function navigate(path: string) {
     font-size: 12px;
     padding: 4px 6px;
   }
-  
+
   .breadcrumb-separator {
     margin: 0 4px;
   }

@@ -5,13 +5,13 @@
  * Implements Requirements: 6.1, 6.2, 6.3
  */
 
-import { Config, ParseResult, ParseError, VideoIdentifier, VideoMetadata, StreamInfo } from './types.js';
 import { load as loadConfig } from './config.js';
-import { normalize } from './normalizer.js';
 import { extract } from './extractor.js';
 import { fetchMetadata } from './metadata-fetcher.js';
+import { normalize } from './normalizer.js';
 import { fetchPlayUrlWithFallback } from './playurl-fetcher.js';
 import { synthesizeStreams } from './synthesizer.js';
+import type { Config, ParseResult, ParseError, VideoIdentifier, VideoMetadata, StreamInfo } from './types.js';
 
 /**
  * Error stage type for pipeline errors
@@ -30,7 +30,7 @@ export interface BilibiliParser {
 /**
  * Create a ParseError with stage identification
  * Requirement 6.3: Error response includes stage name where failure occurred
- * 
+ *
  * @param stage - The pipeline stage where the error occurred
  * @param code - Error code
  * @param message - Error message
@@ -46,19 +46,19 @@ function createParseError(stage: ErrorStage, code: string, message: string): Par
 
 /**
  * Parse a Bilibili video URL and return stream information
- * 
+ *
  * Pipeline stages:
  * 1. normalize - Normalize URL (handle short links, validate format)
  * 2. extract - Extract video identifiers (bvid/aid, part index)
  * 3. metadata - Fetch video metadata from Bilibili API
  * 4. playurl - Fetch stream URLs from Bilibili API
  * 5. synthesize - Organize stream information into output format
- * 
+ *
  * Requirements:
  * - 6.1: Execute complete parsing pipeline and return stream URLs
  * - 6.2: Support short links, standard links, and links with part parameters
  * - 6.3: Return descriptive error indicating which step failed
- * 
+ *
  * @param url - The Bilibili video URL to parse
  * @param options - Optional configuration overrides
  * @returns ParseResult with stream information or error
@@ -70,7 +70,7 @@ export async function parse(url: string, options?: Partial<Config>): Promise<Par
   // Stage 1: Normalize URL
   // Requirement 6.2: Support short links, standard links, and links with part parameters
   const normalizeResult = await normalize(url);
-  
+
   if (!normalizeResult.success) {
     // Requirement 6.3: Error indicates which step failed
     return {
@@ -87,7 +87,7 @@ export async function parse(url: string, options?: Partial<Config>): Promise<Par
 
   // Stage 2: Extract video identifiers
   const extractResult = extract(normalizedUrl);
-  
+
   if (!extractResult.success) {
     return {
       success: false,
@@ -103,7 +103,7 @@ export async function parse(url: string, options?: Partial<Config>): Promise<Par
 
   // Stage 3: Fetch video metadata
   const metadataResult = await fetchMetadata(videoId, config);
-  
+
   if (!metadataResult.success) {
     return {
       success: false,
@@ -125,7 +125,7 @@ export async function parse(url: string, options?: Partial<Config>): Promise<Par
     },
     config
   );
-  
+
   if (!playUrlResult.success) {
     return {
       success: false,
@@ -141,7 +141,7 @@ export async function parse(url: string, options?: Partial<Config>): Promise<Par
 
   // Stage 5: Synthesize stream information
   const synthesizeResult = synthesizeStreams(streamInfo, metadata);
-  
+
   if (!synthesizeResult.success) {
     // synthesizeStreams already returns ParseError with stage
     return synthesizeResult;

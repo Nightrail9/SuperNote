@@ -11,6 +11,7 @@
  */
 
 import fc from 'fast-check';
+
 import { createMarkdownGenerator } from './markdown-generator.js';
 import type { PPTData } from './markdown-generator.js';
 
@@ -148,7 +149,7 @@ try {
       (title, pptData) => {
         const markdown = generator.formatMarkdown(title, pptData as PPTData);
         return pptData.keyFrameList.every(frame =>
-          markdown.includes(`![`) && markdown.includes(`](${frame.fileUrl})`)
+          markdown.includes('![') && markdown.includes(`](${frame.fileUrl})`)
         );
       }
     ),

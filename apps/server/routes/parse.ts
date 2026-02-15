@@ -1,16 +1,18 @@
 /**
  * Parse Route Handler
- * 
+ *
  * POST /api/parse endpoint that accepts a Bilibili video URL
  * and returns parsed video data with stream information.
- * 
+ *
  * Requirements: 1.1, 1.2, 1.4
  */
 
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+
 import { parse } from '../../../packages/parser-core/src/parser.js';
-import { ParseResult, StreamOption } from '../../../packages/parser-core/src/types.js';
+import type { ParseResult, StreamOption } from '../../../packages/parser-core/src/types.js';
 import { loadConfig } from '../config.js';
+import type { Request, Response } from 'express';
 
 /**
  * Request body interface for /api/parse endpoint
@@ -54,7 +56,7 @@ export type ParseResponse = ParseSuccessResponse | ParseErrorResponse;
 
 /**
  * Create the parse router
- * 
+ *
  * @returns Express Router with /api/parse endpoint
  */
 export function createParseRouter(): Router {
@@ -62,12 +64,12 @@ export function createParseRouter(): Router {
 
   /**
    * POST /api/parse
-   * 
+   *
    * Accepts a Bilibili video URL and returns parsed video data.
-   * 
+   *
    * Request body:
    * - url: string - The Bilibili video URL to parse
-   * 
+   *
    * Response:
    * - success: boolean - Whether parsing succeeded
    * - data?: ParsedVideoData - Video metadata and streams (on success)
@@ -143,4 +145,3 @@ export function createParseRouter(): Router {
 
   return router;
 }
-

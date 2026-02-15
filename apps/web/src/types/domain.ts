@@ -58,7 +58,10 @@ export type LocalTranscriberConfig = {
   ffmpegBin?: string
   model: string
   language: string
-  device: 'auto' | 'cpu' | 'cuda'
+  device: 'cpu' | 'cuda'
+  cudaChecked: boolean
+  cudaAvailable: boolean
+  cudaEnabledOnce: boolean
   beamSize: number
   temperature: number
   timeoutMs: number

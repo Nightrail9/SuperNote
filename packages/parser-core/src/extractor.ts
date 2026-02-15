@@ -5,11 +5,11 @@
  * Implements Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
  */
 
-import { ExtractResult, ExtractError, VideoIdentifier } from './types.js';
+import type { ExtractResult, ExtractError, VideoIdentifier } from './types.js';
 
 /**
  * Regular expression patterns for ID extraction
- * 
+ *
  * BV 号: /BV[a-zA-Z0-9]+/
  * av 号: /av(\d+)/i 或 /aid=(\d+)/
  * 分P: /[?&]p=(\d+)/
@@ -36,7 +36,7 @@ function createError(code: ExtractError['code'], message: string): ExtractError 
 /**
  * Extracts BV number from URL
  * Requirement 2.1: Extract bvid using pattern matching
- * 
+ *
  * @param url - The URL to extract from
  * @returns The bvid if found, undefined otherwise
  */
@@ -49,7 +49,7 @@ function extractBvid(url: string): string | undefined {
  * Extracts av number from URL
  * Requirement 2.2: Extract aid as a numeric value
  * Requirement 2.6: Support /video/avxxx URL format
- * 
+ *
  * @param url - The URL to extract from
  * @returns The aid as number if found, undefined otherwise
  */
@@ -73,7 +73,7 @@ function extractAid(url: string): number | undefined {
  * Extracts part index from URL
  * Requirement 2.3: Extract part index (1-based) from p parameter
  * Requirement 2.4: Default to 1 when no p parameter is present
- * 
+ *
  * @param url - The URL to extract from
  * @returns The part index (defaults to 1)
  */
@@ -89,7 +89,7 @@ function extractPart(url: string): number {
 
 /**
  * Validates if the URL is a valid Bilibili video URL format
- * 
+ *
  * @param url - The URL to validate
  * @returns true if valid Bilibili URL format
  */
@@ -101,7 +101,7 @@ function isValidBilibiliUrl(url: string): boolean {
 
 /**
  * Extracts video identifiers from a normalized URL
- * 
+ *
  * Implements:
  * - Requirement 2.1: BV number extraction
  * - Requirement 2.2: av number extraction
@@ -109,7 +109,7 @@ function isValidBilibiliUrl(url: string): boolean {
  * - Requirement 2.4: Default part index to 1
  * - Requirement 2.5: Error for invalid URLs
  * - Requirement 2.6: Support both /video/BVxxx and /video/avxxx formats
- * 
+ *
  * @param url - The normalized URL to extract identifiers from
  * @returns ExtractResult with VideoIdentifier or error
  */

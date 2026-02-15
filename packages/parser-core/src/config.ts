@@ -5,7 +5,8 @@
  * Implements Requirements: 7.1, 7.2, 7.3, 7.4
  */
 
-import { Config, DEFAULT_CONFIG } from './types.js';
+import type { Config} from './types.js';
+import { DEFAULT_CONFIG } from './types.js';
 
 /**
  * ConfigManager interface
@@ -58,14 +59,14 @@ function getEnvInt(names: readonly string[], defaultValue: number): number {
 
 /**
  * Load configuration from environment variables
- * 
+ *
  * Supports the following environment variables:
  * - SESSDATA or BILIBILI_SESSDATA: Authentication cookie (Requirement 7.1)
  * - BILIBILI_USER_AGENT or USER_AGENT: Custom User-Agent (Requirement 7.2)
  * - BILIBILI_REFERER: Custom Referer header
  * - BILIBILI_TIMEOUT: Request timeout in milliseconds (Requirement 7.3)
  * - BILIBILI_RETRY_ATTEMPTS: Number of retry attempts (Requirement 7.4)
- * 
+ *
  * @returns Config object with values from environment or defaults
  */
 export function fromEnv(): Config {
@@ -95,16 +96,16 @@ export function fromEnv(): Config {
 
 /**
  * Load configuration with optional overrides
- * 
+ *
  * Merges environment configuration with provided overrides.
  * Override values take precedence over environment values.
- * 
+ *
  * @param overrides - Optional partial config to override environment values
  * @returns Complete Config object
  */
 export function load(overrides?: Partial<Config>): Config {
   const envConfig = fromEnv();
-  
+
   if (!overrides) {
     return envConfig;
   }

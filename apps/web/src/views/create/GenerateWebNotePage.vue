@@ -1,12 +1,13 @@
 <script setup lang="ts">
+import { Link, Download, Document, MagicStick, Timer, CircleCheckFilled, Loading } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, type CSSProperties } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Link, Download, Document, MagicStick } from '@element-plus/icons-vue'
+
+import { readTaskMeta, saveTaskMeta, setActiveTaskId } from './taskMeta'
 import { api } from '../../api/modules'
 import PageBlock from '../../components/PageBlock.vue'
 import { buildMarkdownName, downloadMarkdownFile } from '../../utils/markdown'
-import { readTaskMeta, saveTaskMeta, setActiveTaskId } from './taskMeta'
 
 const MarkdownPreview = defineAsyncComponent(() => import('../../components/markdown/MarkdownPreview.vue'))
 
@@ -30,6 +31,7 @@ const saveDraftLoading = ref(false)
 const saveNoteLoading = ref(false)
 const cancelLoading = ref(false)
 const retryLoading = ref(false)
+const refineLoading = ref(false)
 const autoSaving = ref(false)
 const autoSaveDone = ref(false)
 const previewOpen = ref(false)
@@ -40,8 +42,12 @@ const task = ref<{
   progress?: number
   message?: string
   retryable?: boolean
+  resolvedTitle?: string
   resultMd?: string
   error?: string
+  createdAt?: string
+  updatedAt?: string
+  elapsedMs?: number
 } | null>(null)
 let timer: number | undefined
 let pageHideHandler: (() => void) | undefined
@@ -71,6 +77,7 @@ const finalTitle = computed(() => noteTitle.value.trim() || resolveTitle(markdow
 const canOperate = computed(() => taskStatus.value === 'success' && markdown.value.trim().length > 0)
 const canCancel = computed(() => taskStatus.value === 'generating' && !cancelLoading.value)
 const canRetry = computed(() => taskStatus.value === 'failed' && Boolean(task.value?.retryable) && !retryLoading.value)
+const canRefine = computed(() => canOperate.value && !refineLoading.value)
 const shouldAutoSaveDraft = computed(() => {
   if (!canOperate.value) return false
   if (autoSaveDone.value || autoSaving.value) return false
@@ -102,7 +109,14 @@ const stageLabelMap: Record<string, string> = {
   server: '服务处理异常',
 }
 
-const pipelineSteps = [
+type PipelineStep = {
+  key: string
+  title: string
+  description: string
+  icon: unknown
+}
+
+const pipelineSteps: PipelineStep[] = [
   { key: 'validate', title: '校验', description: '检查链接与模型配置', icon: Link },
   { key: 'crawl', title: '抓取', description: '采集网页正文内容', icon: Download },
   { key: 'merge', title: '整合', description: '清洗并聚合信息', icon: Document },
@@ -148,6 +162,35 @@ const webRingStyle = computed<CSSProperties>(() => {
     '--web-progress-angle': `${angle}deg`,
   } as CSSProperties
 })
+const markdownCharCount = computed(() => markdown.value.replace(/\s+/g, '').length)
+const estimatedReadMinutes = computed(() => Math.max(1, Math.round(markdownCharCount.value / 400)))
+const totalDurationLabel = computed(() => {
+  const elapsedMs = Number(task.value?.elapsedMs)
+  if (Number.isFinite(elapsedMs) && elapsedMs >= 0) {
+    return formatDuration(elapsedMs)
+  }
+  const created = Date.parse(task.value?.createdAt ?? '')
+  const ended = Date.parse(task.value?.updatedAt ?? '')
+  if (!Number.isFinite(created) || !Number.isFinite(ended) || ended < created) {
+    return ''
+  }
+  return formatDuration(ended - created)
+})
+const durationDisplay = computed(() => totalDurationLabel.value || '—')
+
+function formatDuration(durationMs: number): string {
+  const totalSeconds = Math.max(1, Math.floor(durationMs / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) {
+    return `${hours}小时${minutes}分钟${seconds}秒`
+  }
+  if (minutes > 0) {
+    return `${minutes}分${seconds}秒`
+  }
+  return `${seconds}秒`
+}
 
 function resolveStepState(index: number) {
   if (taskStatus.value === 'success') return 'done'
@@ -157,6 +200,13 @@ function resolveStepState(index: number) {
   if (index < currentStep.value) return 'done'
   if (index === currentStep.value) return 'active'
   return 'todo'
+}
+
+function resolveStepIcon(step: PipelineStep, index: number) {
+  const state = resolveStepState(index)
+  if (state === 'done') return CircleCheckFilled
+  if (state === 'active') return Loading
+  return step.icon
 }
 
 function resolveApiBaseUrl(): string {
@@ -194,6 +244,18 @@ async function fetchTask() {
   try {
     const response = await api.getTask(taskId.value)
     task.value = response.data
+
+    if (!noteTitle.value.trim()) {
+      const resolvedTitle = response.data.resolvedTitle?.trim()
+      if (resolvedTitle) {
+        noteTitle.value = resolvedTitle
+        saveTaskMeta(taskId.value, {
+          ...taskMeta.value,
+          noteTitle: resolvedTitle,
+        })
+      }
+    }
+
     syncActiveTaskStatus()
   } catch (error) {
     ElMessage.error((error as { message?: string }).message ?? '获取任务失败')
@@ -371,6 +433,26 @@ async function handleRetryTask() {
   }
 }
 
+async function handleRefineTask() {
+  if (!canRefine.value || !taskId.value) {
+    return
+  }
+  refineLoading.value = true
+  try {
+    await api.refineTask(taskId.value)
+    autoSaveDone.value = false
+    ElMessage.success('已开始再次整理')
+    await fetchTask()
+    if (taskStatus.value === 'generating') {
+      startPolling()
+    }
+  } catch (error) {
+    ElMessage.error((error as { message?: string }).message ?? '再次整理失败')
+  } finally {
+    refineLoading.value = false
+  }
+}
+
 function handleDownload() {
   if (!canOperate.value) {
     ElMessage.warning('任务完成后可下载')
@@ -418,20 +500,70 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <PageBlock title="网页生成任务" description="查看网页任务进度，完成后下载并保存生成内容">
+  <PageBlock
+    title="网页生成任务"
+    description="查看网页任务进度，完成后下载并保存生成内容"
+  >
     <template v-if="!taskId">
-      <el-button type="primary" @click="router.push('/create/web')">返回创作中心</el-button>
+      <el-button
+        type="primary"
+        @click="router.push('/create/web')"
+      >
+        返回创作中心
+      </el-button>
     </template>
 
     <template v-else>
-      <div class="task-header">
+      <div
+        v-if="taskStatus !== 'success'"
+        class="task-header"
+      >
         <div class="task-meta-row">
-          <el-tag v-if="taskStatus !== 'success'" effect="dark" :type="statusTagType">{{ statusLabel }}</el-tag>
+          <el-tag
+            effect="dark"
+            :type="statusTagType"
+          >
+            {{ statusLabel }}
+          </el-tag>
         </div>
         <div class="page-toolbar toolbar-end">
-          <el-button v-if="canCancel" type="danger" :loading="cancelLoading" @click="handleCancelTask">取消任务</el-button>
-          <el-button v-if="canRetry" type="primary" :loading="retryLoading" @click="handleRetryTask">重试生成</el-button>
+          <el-button
+            v-if="canCancel"
+            type="danger"
+            :loading="cancelLoading"
+            @click="handleCancelTask"
+          >
+            取消任务
+          </el-button>
+          <el-button
+            v-if="canRetry"
+            type="primary"
+            :loading="retryLoading"
+            @click="handleRetryTask"
+          >
+            重试生成
+          </el-button>
         </div>
+      </div>
+
+      <div
+        v-if="canOperate"
+        class="card-corner-actions"
+      >
+        <el-button
+          class="corner-btn-refine"
+          :loading="refineLoading"
+          @click="handleRefineTask"
+        >
+          重新AI整理
+        </el-button>
+        <el-button
+          text
+          class="corner-btn-download"
+          @click="handleDownload"
+        >
+          下载 .md
+        </el-button>
       </div>
 
       <el-alert
@@ -442,20 +574,57 @@ onBeforeUnmount(() => {
         :closable="false"
         show-icon
       />
-      <el-alert v-else-if="taskStatus === 'cancelled'" title="任务已取消" type="warning" :closable="false" show-icon />
-      <el-alert v-else-if="taskStatus === 'failed'" :title="taskError" type="error" :closable="false" show-icon />
+      <el-alert
+        v-else-if="taskStatus === 'cancelled'"
+        title="任务已取消"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+      <el-alert
+        v-else-if="taskStatus === 'failed'"
+        :title="taskError"
+        type="error"
+        :closable="false"
+        show-icon
+      />
 
-      <el-card v-if="taskStatus === 'generating'" shadow="never" class="progress-card">
-        <div class="progress-top">
-          <el-text tag="strong">网页内容处理流程</el-text>
+      <el-card
+        v-if="taskStatus === 'generating'"
+        shadow="never"
+        class="progress-card"
+      >
+        <div class="progress-head">
+          <div class="progress-head-copy">
+            <el-text tag="strong">
+              网页内容处理流程
+            </el-text>
+            <el-text
+              size="small"
+              type="info"
+            >
+              {{ progressStageLabel }}
+            </el-text>
+          </div>
+          <span class="progress-percent-chip">{{ progressValue }}%</span>
         </div>
         <div class="web-progress-layout">
           <div class="web-stage-list">
-            <div v-for="(step, index) in pipelineSteps" :key="step.key" class="web-stage-item" :class="`is-${resolveStepState(index)}`">
+            <div
+              v-for="(step, index) in pipelineSteps"
+              :key="step.key"
+              class="web-stage-item"
+              :class="`is-${resolveStepState(index)}`"
+            >
               <div class="web-stage-line" />
               <div class="web-stage-content">
                 <div class="web-stage-title-row">
-                  <el-icon class="stage-icon"><component :is="step.icon" /></el-icon>
+                  <el-icon
+                    class="stage-icon"
+                    :class="`is-${resolveStepState(index)}`"
+                  >
+                    <component :is="resolveStepIcon(step, index)" />
+                  </el-icon>
                   <span class="stage-title">{{ step.title }}</span>
                 </div>
                 <span class="stage-desc">{{ step.description }}</span>
@@ -463,38 +632,105 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="web-ring-panel">
-            <div class="web-ring" :style="webRingStyle">
+            <div
+              class="web-ring"
+              :style="webRingStyle"
+            >
               <div class="web-ring-inner">
-                <span class="ring-percent">{{ progressValue }}%</span>
+                <span class="ring-label">进行中</span>
               </div>
             </div>
           </div>
         </div>
-        <el-text type="info">{{ progressMessage }}</el-text>
+        <div class="progress-message-strip">
+          {{ progressMessage }}
+        </div>
       </el-card>
 
       <template v-if="canOperate">
-        <el-card shadow="never" class="result-complete-card">
-          <div class="result-complete-main">
-            <el-text tag="strong" size="large">任务已完成</el-text>
-            <el-text type="info">生成内容已就绪，可在下方操作区点击预览查看。</el-text>
-          </div>
-        </el-card>
+        <div class="result-finish-shell">
+          <el-card
+            shadow="never"
+            class="result-complete-card"
+          >
+            <div class="result-complete-main">
+              <div class="result-complete-head">
+                <el-tag
+                  effect="dark"
+                  type="success"
+                  size="small"
+                >
+                  完成
+                </el-tag>
+                <el-text type="info">
+                  网页内容已生成，适合继续精炼并保存归档
+                </el-text>
+              </div>
+              <el-text
+                tag="strong"
+                size="large"
+              >
+                任务已完成，输出已可查看
+              </el-text>
+              <div class="result-meta-chips">
+                <span class="result-meta-chip">内容字数约 {{ markdownCharCount }}</span>
+                <span class="result-meta-chip">预计阅读 {{ estimatedReadMinutes }} 分钟</span>
+              </div>
+            </div>
+          </el-card>
 
-        <div class="result-action-panel">
-          <el-input v-model="noteTitle" class="result-title-input" placeholder="笔记标题（可选，不填将从 Markdown 自动提取）" />
-          <div class="page-toolbar toolbar-end result-action-row">
-            <el-button @click="openPreview">预览</el-button>
-            <el-button @click="handleDownload">下载 .md</el-button>
-            <el-button :loading="saveDraftLoading" @click="saveDraft">保存为草稿</el-button>
-            <el-button type="primary" :loading="saveNoteLoading" :disabled="!sourceUrlFirstValid" @click="saveNote">保存为笔记</el-button>
+          <div class="result-action-panel">
+            <div class="result-action-head">
+              <div class="result-action-head-copy">
+                <el-text tag="strong">
+                  结果处理
+                </el-text>
+                <el-text
+                  size="small"
+                  type="info"
+                >
+                  建议先预览，再保存为笔记
+                </el-text>
+              </div>
+            </div>
+            <el-input
+              v-model="noteTitle"
+              class="result-title-input"
+              placeholder="笔记标题（可选，不填将从 Markdown 自动提取）"
+            />
+            <div class="result-core-actions">
+              <el-button @click="openPreview">
+                预览
+              </el-button>
+              <el-button
+                :loading="saveDraftLoading"
+                @click="saveDraft"
+              >
+                保存为草稿
+              </el-button>
+              <el-button
+                type="primary"
+                :loading="saveNoteLoading"
+                :disabled="!sourceUrlFirstValid"
+                @click="saveNote"
+              >
+                保存为笔记
+              </el-button>
+            </div>
+            <el-alert
+              v-if="!sourceUrlFirstValid"
+              type="warning"
+              :closable="false"
+              title="缺少源链接，无法保存为笔记，请回到创作中心重新发起任务"
+            />
           </div>
-          <el-alert
-            v-if="!sourceUrlFirstValid"
-            type="warning"
-            :closable="false"
-            title="缺少源链接，无法保存为笔记，请回到创作中心重新发起任务"
-          />
+          <div class="result-duration-note">
+            <el-icon class="result-duration-icon">
+              <Timer />
+            </el-icon>
+            <span class="result-duration-label">本次生成总花费时长：</span>
+            <strong class="result-duration-value">{{ durationDisplay }}</strong>
+          </div>
         </div>
 
         <el-dialog
@@ -508,9 +744,15 @@ onBeforeUnmount(() => {
           :close-on-click-modal="false"
           @closed="closePreview"
         >
-          <el-card shadow="never" class="history-preview-card task-preview-card">
+          <el-card
+            shadow="never"
+            class="history-preview-card task-preview-card"
+          >
             <div class="history-preview-body">
-              <MarkdownPreview v-if="previewOpen" :source="markdown" />
+              <MarkdownPreview
+                v-if="previewOpen"
+                :source="markdown"
+              />
             </div>
           </el-card>
         </el-dialog>
@@ -528,17 +770,70 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
+:deep(.page-block) {
+  position: relative;
+}
+
+.card-corner-actions {
+  position: absolute;
+  right: 20px;
+  top: 18px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.corner-btn-refine {
+  border-color: rgba(13, 148, 136, 0.35);
+  background: rgba(240, 253, 250, 0.88);
+  color: #115e59;
+}
+
+.corner-btn-refine:hover {
+  border-color: rgba(15, 118, 110, 0.55);
+  background: rgba(204, 251, 241, 0.9);
+  color: #134e4a;
+}
+
+.corner-btn-download {
+  color: #115e59;
+  font-weight: 600;
+}
+
+.corner-btn-download:hover {
+  color: #134e4a;
+}
+
 .progress-card {
   border-radius: var(--radius-md);
   border: 1px solid rgba(13, 148, 136, 0.2);
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(236, 253, 245, 0.9) 100%);
 }
 
-.progress-top {
+.progress-head {
   display: flex;
-  align-items: center;
-  justify-content: flex-start;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: var(--space-3);
+}
+
+.progress-head-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.progress-percent-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(13, 148, 136, 0.28);
+  background: rgba(204, 251, 241, 0.68);
+  color: #115e59;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .web-progress-layout {
@@ -600,7 +895,30 @@ onBeforeUnmount(() => {
 }
 
 .stage-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.stage-icon.is-active {
   color: #0f766e;
+  background: rgba(20, 184, 166, 0.2);
+  animation: stage-icon-rotate 1.2s linear infinite;
+}
+
+.stage-icon.is-done {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.18);
+}
+
+.stage-icon.is-todo {
+  color: #64748b;
+  background: rgba(148, 163, 184, 0.18);
 }
 
 .stage-title {
@@ -640,31 +958,102 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(148, 163, 184, 0.3);
 }
 
-.ring-percent {
-  font-size: 22px;
+.ring-label {
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 0.04em;
   color: #0f766e;
+}
+
+.progress-message-strip {
+  margin-top: var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(13, 148, 136, 0.22);
+  background: rgba(240, 253, 250, 0.78);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #115e59;
 }
 
 .result-action-panel {
   display: grid;
   gap: var(--space-3);
-  margin-top: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--bg-surface);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.98) 0%, rgba(236, 253, 245, 0.92) 100%);
+  box-shadow: 0 16px 30px -28px rgba(13, 148, 136, 0.56);
 }
 
 .result-complete-card {
   border-radius: var(--radius-md);
   border: 1px solid rgba(15, 118, 110, 0.28);
   background: linear-gradient(135deg, rgba(240, 253, 250, 0.92) 0%, rgba(255, 255, 255, 0.96) 100%);
+  box-shadow: 0 20px 32px -28px rgba(13, 148, 136, 0.58);
 }
 
 .result-complete-main {
   display: grid;
-  gap: 6px;
+  gap: 10px;
+}
+
+.result-finish-shell {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.result-complete-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-meta-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.result-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 118, 110, 0.28);
+  background: rgba(204, 251, 241, 0.55);
+  color: #115e59;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.result-action-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.result-action-head-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.result-core-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.result-core-actions :deep(.el-button) {
+  min-width: 112px;
+}
+
+.result-core-actions :deep(.el-button--primary) {
+  min-width: 136px;
 }
 
 .history-preview-card {
@@ -681,7 +1070,49 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
+.result-duration-note {
+  margin-top: -4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed rgba(13, 148, 136, 0.36);
+  background: rgba(240, 253, 250, 0.8);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #115e59;
+  font-size: 12px;
+}
+
+.result-duration-icon {
+  color: #0f766e;
+}
+
+.result-duration-label {
+  color: #115e59;
+}
+
+.result-duration-value {
+  color: #134e4a;
+}
+
+@keyframes stage-icon-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 768px) {
+  .card-corner-actions {
+    position: static;
+    margin-top: var(--space-2);
+    margin-bottom: var(--space-1);
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .web-progress-layout {
     grid-template-columns: 1fr;
   }
@@ -694,8 +1125,14 @@ onBeforeUnmount(() => {
     padding: var(--space-3);
   }
 
-  .result-action-row {
+  .result-core-actions {
     justify-content: flex-start;
+    width: 100%;
+  }
+
+  .result-core-actions :deep(.el-button) {
+    flex: 1;
+    min-width: 0;
   }
 }
 </style>

@@ -1,13 +1,13 @@
 /**
  * CORS Middleware
- * 
+ *
  * Sets appropriate CORS response headers to allow frontend cross-origin access.
  * Handles preflight OPTIONS requests.
- * 
+ *
  * Requirements: 1.5
  */
 
-import { Request, Response, NextFunction, RequestHandler } from 'express';
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
 
 /**
  * CORS configuration options
@@ -29,7 +29,7 @@ const DEFAULT_CORS_CONFIG: CorsConfig = {
 
 /**
  * Determines the Access-Control-Allow-Origin header value based on config and request
- * 
+ *
  * @param config - CORS configuration
  * @param requestOrigin - Origin header from the request
  * @returns The origin value to set in the response header
@@ -58,7 +58,7 @@ function resolveOrigin(config: CorsConfig, requestOrigin?: string): string {
 
 /**
  * Creates a CORS middleware function
- * 
+ *
  * @param config - Optional CORS configuration (uses defaults if not provided)
  * @returns Express middleware function that sets CORS headers
  */
@@ -86,4 +86,3 @@ export function createCorsMiddleware(config?: Partial<CorsConfig>): RequestHandl
     next();
   };
 }
-

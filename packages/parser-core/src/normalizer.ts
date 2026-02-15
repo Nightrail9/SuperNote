@@ -7,7 +7,8 @@
  * Implements Requirements: 1.1, 1.2, 1.3, 1.4, 1.5
  */
 
-import { NormalizeResult, NormalizeError } from './types.js';
+import type { NormalizeResult} from './types.js';
+import { NormalizeError } from './types.js';
 
 /**
  * Normalizer interface

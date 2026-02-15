@@ -5,7 +5,7 @@
  * Implements Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
  */
 
-import {
+import type {
   StreamInfo,
   VideoMetadata,
   ParseResult,
@@ -55,7 +55,7 @@ function getQualityDescription(
  * Synthesize DASH streams into StreamOption array
  * Requirement 5.1: DASH streams organized with video and audio separately with quality info
  * Requirement 5.3: Include stream quality info (resolution, bitrate, codec)
- * 
+ *
  * @param streamInfo - Stream information from PlayURL API
  * @returns Array of StreamOption for DASH format
  */
@@ -121,7 +121,7 @@ function synthesizeDashStreams(streamInfo: StreamInfo): StreamOption[] {
  * Synthesize FLV/MP4 streams into StreamOption array
  * Requirement 5.2: FLV streams return direct playable URL
  * Requirement 5.3: Include stream quality info
- * 
+ *
  * @param streamInfo - Stream information from PlayURL API
  * @returns Array of StreamOption for FLV/MP4 format
  */
@@ -154,7 +154,7 @@ function synthesizeFlvStreams(streamInfo: StreamInfo): StreamOption[] {
 /**
  * Sort stream options by quality in descending order
  * Requirement 5.5: Multiple quality options sorted by quality descending
- * 
+ *
  * @param options - Array of StreamOption
  * @returns Sorted array (highest quality first)
  */
@@ -172,7 +172,7 @@ export interface StreamSynthesizer {
 /**
  * Synthesize stream information into ParseResult
  * Requirements 5.1, 5.2, 5.3, 5.4, 5.5
- * 
+ *
  * @param streamInfo - Stream information from PlayURL API
  * @param metadata - Video metadata
  * @returns ParseResult with organized stream options

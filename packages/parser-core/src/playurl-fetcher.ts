@@ -5,7 +5,9 @@
  * Implements Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8
  */
 
-import {
+import type { HttpClient} from './http-client.js';
+import { createHttpClient } from './http-client.js';
+import type {
   Config,
   PlayURLParams,
   PlayURLResult,
@@ -16,7 +18,6 @@ import {
   QualityOption,
   APIError,
 } from './types.js';
-import { HttpClient, createHttpClient } from './http-client.js';
 
 /**
  * Bilibili PlayURL API endpoint
@@ -172,23 +173,23 @@ function mapApiError(code: number, message: string): APIError {
  */
 export function buildPlayUrlApiUrl(params: PlayURLParams): string {
   const url = new URL(PLAYURL_API_URL);
-  
+
   url.searchParams.set('bvid', params.bvid);
   url.searchParams.set('cid', params.cid.toString());
-  
+
   // Requirement 4.5: Set qn parameter for quality
   url.searchParams.set('qn', (params.qn ?? QUALITY_PARAMS.QN_8K).toString());
-  
+
   // Requirement 4.2: Set fnval for format (4048 for DASH)
   url.searchParams.set('fnval', (params.fnval ?? FORMAT_FLAGS.DASH).toString());
-  
+
   // Request 4K support
   url.searchParams.set('fourk', (params.fourk ?? 1).toString());
-  
+
   // Set platform to html5 to get publicly accessible URLs (without Referer restriction)
   url.searchParams.set('platform', 'html5');
   url.searchParams.set('high_quality', '1');
-  
+
   return url.toString();
 }
 
@@ -276,21 +277,21 @@ function determineFormat(data: BilibiliPlayUrlData): 'dash' | 'flv' | 'mp4' {
  */
 function transformToStreamInfo(data: BilibiliPlayUrlData): StreamInfo {
   const format = determineFormat(data);
-  
+
   const streamInfo: StreamInfo = {
     format,
     quality: data.quality,
     acceptQuality: buildQualityOptions(data.accept_quality, data.accept_description),
   };
-  
+
   if (data.dash) {
     streamInfo.dash = transformDashInfo(data.dash);
   }
-  
+
   if (data.durl) {
     streamInfo.durl = data.durl.map(transformDurl);
   }
-  
+
   return streamInfo;
 }
 
@@ -305,7 +306,7 @@ export interface PlayURLFetcher {
 /**
  * Fetch play URL from Bilibili API
  * Requirements 4.1, 4.2, 4.4, 4.5, 4.6, 4.7, 4.8
- * 
+ *
  * @param params - PlayURL parameters (bvid, cid, qn, fnval, fourk)
  * @param config - Optional configuration overrides
  * @param httpClient - Optional HTTP client instance (for testing)
@@ -326,7 +327,7 @@ export async function fetchPlayUrl(
       },
     };
   }
-  
+
   if (!params.cid || params.cid <= 0) {
     return {
       success: false,
@@ -341,18 +342,18 @@ export async function fetchPlayUrl(
   // Requirement 4.8: Set required Referer and User-Agent headers (handled by HttpClient)
   // Requirement 4.4: SESSDATA Cookie injection (handled by HttpClient)
   const client = httpClient ?? createHttpClient(config);
-  
+
   // Build API URL
   const url = buildPlayUrlApiUrl(params);
-  
+
   // Make API request
   const response = await client.get<BilibiliPlayUrlResponse>(url);
-  
+
   // Handle HTTP errors
   // Requirement 4.6: HTTP 403 indicates missing Referer header
   if (!response.success) {
     const httpStatus = response.error?.httpStatus;
-    
+
     if (httpStatus === 403) {
       return {
         success: false,
@@ -363,7 +364,7 @@ export async function fetchPlayUrl(
         },
       };
     }
-    
+
     return {
       success: false,
       error: {
@@ -373,9 +374,9 @@ export async function fetchPlayUrl(
       },
     };
   }
-  
+
   const apiResponse = response.data;
-  
+
   // Check if response data exists
   if (!apiResponse) {
     return {
@@ -386,7 +387,7 @@ export async function fetchPlayUrl(
       },
     };
   }
-  
+
   // Handle API errors
   // Requirement 4.7: API code -404 indicates invalid parameters
   if (apiResponse.code !== 0) {
@@ -395,7 +396,7 @@ export async function fetchPlayUrl(
       error: mapApiError(apiResponse.code, apiResponse.message),
     };
   }
-  
+
   // Validate response data
   if (!apiResponse.data) {
     return {
@@ -406,10 +407,10 @@ export async function fetchPlayUrl(
       },
     };
   }
-  
+
   // Transform response to StreamInfo
   const streamInfo = transformToStreamInfo(apiResponse.data);
-  
+
   return {
     success: true,
     data: streamInfo,
@@ -419,7 +420,7 @@ export async function fetchPlayUrl(
 /**
  * Fetch play URL with fallback from DASH to FLV
  * Requirement 4.3: Fall back to FLV/MP4 when DASH unavailable
- * 
+ *
  * @param params - PlayURL parameters
  * @param config - Optional configuration overrides
  * @param httpClient - Optional HTTP client instance (for testing)
@@ -435,33 +436,33 @@ export async function fetchPlayUrlWithFallback(
     ...params,
     fnval: FORMAT_FLAGS.DASH,
   };
-  
+
   const dashResult = await fetchPlayUrl(dashParams, config, httpClient);
-  
+
   // If DASH succeeded and has dash data, return it
   if (dashResult.success && dashResult.data?.dash) {
     return dashResult;
   }
-  
+
   // Requirement 4.3: Fall back to FLV/MP4 (fnval=0)
   const flvParams: PlayURLParams = {
     ...params,
     fnval: FORMAT_FLAGS.FLV,
   };
-  
+
   const flvResult = await fetchPlayUrl(flvParams, config, httpClient);
-  
+
   // If FLV succeeded, return it
   if (flvResult.success) {
     return flvResult;
   }
-  
+
   // If both failed, return the DASH error (more informative)
   // unless DASH succeeded but had no dash data
   if (!dashResult.success) {
     return dashResult;
   }
-  
+
   // DASH succeeded but no dash data, and FLV failed
   return flvResult;
 }
@@ -473,7 +474,7 @@ export async function fetchPlayUrlWithFallback(
  */
 export function createPlayUrlFetcher(config?: Partial<Config>): PlayURLFetcher {
   const httpClient = createHttpClient(config);
-  
+
   return {
     fetch: (params: PlayURLParams, overrideConfig?: Partial<Config>) => {
       if (overrideConfig) {
@@ -482,7 +483,7 @@ export function createPlayUrlFetcher(config?: Partial<Config>): PlayURLFetcher {
       }
       return fetchPlayUrl(params, config, httpClient);
     },
-    
+
     fetchWithFallback: (params: PlayURLParams, overrideConfig?: Partial<Config>) => {
       if (overrideConfig) {
         const mergedClient = createHttpClient({ ...config, ...overrideConfig });

@@ -1,12 +1,12 @@
 /**
  * Theme Store
- * 
+ *
  * 管理应用主题状态，支持亮色/暗色模式手动切换
  * 使用 Pinia 进行状态管理，localStorage 持久化
  */
 
-import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
 
 export type Theme = 'light' | 'dark'
 
@@ -48,10 +48,10 @@ function applyThemeToDocument(theme: Theme): void {
   } else {
     document.documentElement.removeAttribute('data-theme')
   }
-  
+
   // 添加过渡类，使主题切换更平滑
   document.body.classList.add('theme-transition')
-  
+
   // 300ms 后移除过渡类，避免影响性能
   setTimeout(() => {
     document.body.classList.remove('theme-transition')
@@ -62,22 +62,22 @@ export const useThemeStore = defineStore('theme', () => {
   // ============================================================================
   // State
   // ============================================================================
-  
+
   const theme = ref<Theme>(readStoredTheme() ?? DEFAULT_THEME)
   const isInitialized = ref(false)
 
   // ============================================================================
   // Getters
   // ============================================================================
-  
+
   const isDark = computed(() => theme.value === 'dark')
   const isLight = computed(() => theme.value === 'light')
-  
+
   /**
    * 当前主题标签
    */
   const themeLabel = computed(() => (theme.value === 'dark' ? '暗色' : '亮色'))
-  
+
   /**
    * 切换后的主题（用于按钮提示）
    */
@@ -86,19 +86,19 @@ export const useThemeStore = defineStore('theme', () => {
   // ============================================================================
   // Actions
   // ============================================================================
-  
+
   /**
    * 设置主题
    * @param newTheme - 新主题
    */
   function setTheme(newTheme: Theme): void {
     if (theme.value === newTheme) return
-    
+
     theme.value = newTheme
     writeStoredTheme(newTheme)
     applyThemeToDocument(newTheme)
   }
-  
+
   /**
    * 切换主题
    */
@@ -106,14 +106,14 @@ export const useThemeStore = defineStore('theme', () => {
     const newTheme = theme.value === 'light' ? 'dark' : 'light'
     setTheme(newTheme)
   }
-  
+
   /**
    * 初始化和应用主题
    * 应在应用启动时调用一次
    */
   function initialize(): void {
     if (isInitialized.value) return
-    
+
     applyThemeToDocument(theme.value)
     isInitialized.value = true
   }
@@ -122,13 +122,13 @@ export const useThemeStore = defineStore('theme', () => {
     // State
     theme,
     isInitialized,
-    
+
     // Getters
     isDark,
     isLight,
     themeLabel,
     nextThemeLabel,
-    
+
     // Actions
     setTheme,
     toggleTheme,

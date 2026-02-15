@@ -1,6 +1,7 @@
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
+
 import { normalizeJinaReaderEndpoint } from './jina-reader-client.js';
 import { isBundledFfmpegAvailable } from '../utils/ffmpeg-resolver.js';
 
@@ -60,7 +61,10 @@ export type LocalTranscriberConfigRecord = {
   ffmpegBin: string;
   model: string;
   language: string;
-  device: 'auto' | 'cpu' | 'cuda';
+  device: 'cpu' | 'cuda';
+  cudaChecked: boolean;
+  cudaAvailable: boolean;
+  cudaEnabledOnce: boolean;
   beamSize: number;
   temperature: number;
   timeoutMs: number;
@@ -86,6 +90,7 @@ export type TaskRecord = {
   progress?: number;
   message?: string;
   sourceUrl: string;
+  resolvedTitle?: string;
   sourceType?: 'bilibili' | 'web';
   promptId?: string;
   modelId?: string;
@@ -169,6 +174,73 @@ function defaultModels(): ModelConfigRecord[] {
   ];
 }
 
+function normalizeModelRecords(input: unknown): ModelConfigRecord[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const mapped = input
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => item as Partial<ModelConfigRecord>)
+    .filter((item) => typeof item.id === 'string' && typeof item.provider === 'string')
+    .filter((item) => item.provider === 'gemini' || item.provider === 'chatgpt' || item.provider === 'openai_compatible')
+    .map((item) => ({
+      id: (item.id as string).trim(),
+      provider: item.provider as ModelProvider,
+      enabled: Boolean(item.enabled),
+      isDefault: Boolean(item.isDefault),
+      baseUrl: typeof item.baseUrl === 'string' ? item.baseUrl.trim() : undefined,
+      apiKey: typeof item.apiKey === 'string' ? item.apiKey.trim() : undefined,
+      modelName: typeof item.modelName === 'string' ? item.modelName.trim() : '',
+      timeoutMs: typeof item.timeoutMs === 'number' ? item.timeoutMs : undefined,
+    }))
+    .filter((item) => item.id.length > 0);
+
+  if (mapped.length === 0) {
+    return [];
+  }
+
+  const deduped: ModelConfigRecord[] = [];
+  const seen = new Set<string>();
+  for (const item of mapped) {
+    if (seen.has(item.id)) {
+      continue;
+    }
+    seen.add(item.id);
+    deduped.push(item);
+  }
+
+  const defaultModelId = process.env.AI_DEFAULT_MODEL_ID?.trim();
+  if (defaultModelId) {
+    const hasMatch = deduped.some((item) => item.id === defaultModelId);
+    if (hasMatch) {
+      return deduped.map((item) => ({
+        ...item,
+        isDefault: item.id === defaultModelId,
+      }));
+    }
+  }
+
+  if (!deduped.some((item) => item.isDefault)) {
+    deduped[0]!.isDefault = true;
+  }
+  return deduped;
+}
+
+function readModelsFromEnv(): ModelConfigRecord[] {
+  const raw = process.env.AI_MODELS_JSON;
+  if (!raw || !raw.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeModelRecords(parsed);
+  } catch {
+    return [];
+  }
+}
+
 function migrateModelBaseUrls(models: ModelConfigRecord[]): ModelConfigRecord[] {
   return models.map((item) => {
     if (item.provider === 'gemini') {
@@ -213,7 +285,10 @@ function defaultLocalTranscriber(): LocalTranscriberConfigRecord {
     ffmpegBin: process.env.FFMPEG_BIN?.trim() || (hasBundled ? bundledFfmpeg : 'ffmpeg'),
     model: process.env.LOCAL_ASR_MODEL?.trim() || 'small',
     language: process.env.LOCAL_ASR_LANGUAGE?.trim() || 'zh',
-    device: (process.env.LOCAL_ASR_DEVICE?.trim() as LocalTranscriberConfigRecord['device']) || 'auto',
+    device: process.env.LOCAL_ASR_DEVICE?.trim() === 'cuda' ? 'cuda' : 'cpu',
+    cudaChecked: false,
+    cudaAvailable: false,
+    cudaEnabledOnce: process.env.LOCAL_ASR_DEVICE?.trim() === 'cuda',
     beamSize: Number.parseInt(process.env.LOCAL_ASR_BEAM_SIZE || '5', 10),
     temperature: Number.parseFloat(process.env.LOCAL_ASR_TEMPERATURE || '0'),
     timeoutMs: Number.parseInt(process.env.LOCAL_ASR_TIMEOUT_MS || '1800000', 10),
@@ -270,9 +345,9 @@ function normalizeLocalTranscriberConfig(
   const language = env.LOCAL_ASR_LANGUAGE?.trim() || incoming?.language || defaults.language;
   const deviceEnv = env.LOCAL_ASR_DEVICE?.trim();
   const device =
-    deviceEnv === 'cpu' || deviceEnv === 'cuda' || deviceEnv === 'auto'
+    deviceEnv === 'cpu' || deviceEnv === 'cuda'
       ? deviceEnv
-      : incoming?.device === 'cpu' || incoming?.device === 'cuda' || incoming?.device === 'auto'
+      : incoming?.device === 'cpu' || incoming?.device === 'cuda'
         ? incoming.device
         : defaults.device;
   const beamSize = env.LOCAL_ASR_BEAM_SIZE
@@ -290,6 +365,12 @@ function normalizeLocalTranscriberConfig(
     : typeof incoming?.timeoutMs === 'number'
       ? Math.max(30000, Math.min(1800000, Math.floor(incoming.timeoutMs)))
       : defaults.timeoutMs;
+  const cudaChecked = typeof incoming?.cudaChecked === 'boolean' ? incoming.cudaChecked : defaults.cudaChecked;
+  const cudaAvailable = typeof incoming?.cudaAvailable === 'boolean' ? incoming.cudaAvailable : defaults.cudaAvailable;
+  const cudaEnabledOnce =
+    typeof incoming?.cudaEnabledOnce === 'boolean'
+      ? incoming.cudaEnabledOnce
+      : defaults.cudaEnabledOnce || device === 'cuda';
 
   return {
     engine: 'whisper_cli',
@@ -298,6 +379,9 @@ function normalizeLocalTranscriberConfig(
     model,
     language,
     device,
+    cudaChecked,
+    cudaAvailable,
+    cudaEnabledOnce,
     beamSize,
     temperature,
     timeoutMs,
@@ -371,15 +455,20 @@ function readDiskData(): AppData {
   }
 
   const parsed = JSON.parse(raw) as Partial<AppData>;
+  const envModels = readModelsFromEnv();
   const next: AppData = {
     notes: Array.isArray(parsed.notes) ? parsed.notes : [],
     drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
     settings: {
       models: migrateModelBaseUrls(
-        Array.isArray(parsed.settings?.models) && parsed.settings?.models.length > 0
-          ? parsed.settings.models
-          : defaultModels()
+        envModels.length > 0
+          ? envModels
+          : normalizeModelRecords(
+              Array.isArray(parsed.settings?.models) && parsed.settings?.models.length > 0
+                ? parsed.settings.models
+                : defaultModels()
+            )
       ),
       prompts: Array.isArray(parsed.settings?.prompts) ? parsed.settings.prompts : defaultPrompts(),
       integrations: parsed.settings?.integrations

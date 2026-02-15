@@ -5,8 +5,9 @@
  * Implements Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
  */
 
-import { Config, VideoIdentifier, VideoMetadata, MetadataResult, APIError, PageInfo } from './types.js';
-import { HttpClient, createHttpClient } from './http-client.js';
+import type { HttpClient} from './http-client.js';
+import { createHttpClient } from './http-client.js';
+import type { Config, VideoIdentifier, VideoMetadata, MetadataResult, APIError, PageInfo } from './types.js';
 
 /**
  * Bilibili View API endpoint
@@ -105,13 +106,13 @@ function mapApiError(code: number, message: string): APIError {
  */
 function buildViewApiUrl(id: VideoIdentifier): string {
   const url = new URL(VIEW_API_URL);
-  
+
   if (id.bvid) {
     url.searchParams.set('bvid', id.bvid);
   } else if (id.aid !== undefined) {
     url.searchParams.set('aid', id.aid.toString());
   }
-  
+
   return url.toString();
 }
 
@@ -125,11 +126,11 @@ function buildViewApiUrl(id: VideoIdentifier): string {
 export function selectCidForPart(pages: PageInfo[], partIndex: number): number | undefined {
   // Part index is 1-based, array is 0-based
   const pageIndex = partIndex - 1;
-  
+
   if (pageIndex < 0 || pageIndex >= pages.length) {
     return undefined;
   }
-  
+
   const page = pages[pageIndex];
   return page ? page.cid : undefined;
 }
@@ -159,7 +160,7 @@ export interface MetadataFetcher {
 /**
  * Fetch video metadata from Bilibili API
  * Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
- * 
+ *
  * @param id - Video identifier (bvid or aid with part index)
  * @param config - Optional configuration overrides
  * @param httpClient - Optional HTTP client instance (for testing)
@@ -184,13 +185,13 @@ export async function fetchMetadata(
   // Create HTTP client with config
   // Requirement 3.7: Set required Referer header (handled by HttpClient)
   const client = httpClient ?? createHttpClient(config);
-  
+
   // Build API URL
   const url = buildViewApiUrl(id);
-  
+
   // Make API request
   const response = await client.get<BilibiliViewResponse>(url);
-  
+
   // Handle HTTP errors
   if (!response.success) {
     return {
@@ -202,9 +203,9 @@ export async function fetchMetadata(
       },
     };
   }
-  
+
   const apiResponse = response.data;
-  
+
   // Check if response data exists
   if (!apiResponse) {
     return {
@@ -215,7 +216,7 @@ export async function fetchMetadata(
       },
     };
   }
-  
+
   // Handle API errors
   // Requirements 3.5, 3.6: Map error codes -404 and -412
   if (apiResponse.code !== 0) {
@@ -224,7 +225,7 @@ export async function fetchMetadata(
       error: mapApiError(apiResponse.code, apiResponse.message),
     };
   }
-  
+
   // Validate response data
   if (!apiResponse.data) {
     return {
@@ -235,18 +236,18 @@ export async function fetchMetadata(
       },
     };
   }
-  
+
   const data = apiResponse.data;
-  
+
   // Transform pages
   // Requirement 3.3: Return complete pages array
   const pages = transformPages(data.pages);
-  
+
   // Select cid for requested part
   // Requirement 3.4: Return cid for specific part
   const partIndex = id.part ?? 1;
   const selectedCid = selectCidForPart(pages, partIndex);
-  
+
   // Handle invalid part index
   if (selectedCid === undefined) {
     return {
@@ -257,7 +258,7 @@ export async function fetchMetadata(
       },
     };
   }
-  
+
   // Build successful result
   const metadata: VideoMetadata = {
     bvid: data.bvid,
@@ -267,7 +268,7 @@ export async function fetchMetadata(
     pages,
     duration: data.duration,
   };
-  
+
   return {
     success: true,
     data: metadata,
@@ -281,7 +282,7 @@ export async function fetchMetadata(
  */
 export function createMetadataFetcher(config?: Partial<Config>): MetadataFetcher {
   const httpClient = createHttpClient(config);
-  
+
   return {
     fetch: (id: VideoIdentifier, overrideConfig?: Partial<Config>) => {
       // Merge configs if override provided

@@ -1,3 +1,4 @@
+import { http } from './http'
 import type {
   Draft,
   IntegrationConfig,
@@ -9,7 +10,6 @@ import type {
   VideoUnderstandingConfig,
   VideoUnderstandingPreset,
 } from '../types/domain'
-import { http } from './http'
 
 type ListResponse<T> = {
   items: T[]
@@ -33,9 +33,13 @@ export const api = {
       progress?: number
       message?: string
       retryable?: boolean
+      resolvedTitle?: string
       sourceType?: 'bilibili' | 'web'
       formats?: NoteFormat[]
       resultMd?: string
+      createdAt?: string
+      updatedAt?: string
+      elapsedMs?: number
       debug?: {
         keyframeStats?: Array<{
           url: string
@@ -57,6 +61,9 @@ export const api = {
   },
   retryTask(taskId: string) {
     return http.post<{ success: boolean; message: string }>(`/tasks/${taskId}/retry`)
+  },
+  refineTask(taskId: string) {
+    return http.post<{ success: boolean; message: string }>(`/tasks/${taskId}/refine`)
   },
   createDraft(payload: { sourceUrl?: string; title?: string; contentMd: string }) {
     return http.post<{ draftId: string; updatedAt: string }>('/drafts', payload)

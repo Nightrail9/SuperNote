@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 /**
  * EmptyState - 统一空状态组件
- * 
+ *
  * 特点：
  * - SVG 线框风格插画
  * - 支持多种状态：empty（空列表）、search（搜索无结果）、error（错误）
@@ -57,55 +57,200 @@ function handleAction() {
     <!-- SVG 插画 -->
     <div class="empty-illustration">
       <!-- 空列表状态 -->
-      <svg v-if="type === 'empty'" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg
+        v-if="type === 'empty'"
+        viewBox="0 0 120 120"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
         <!-- 文档轮廓 -->
-        <rect x="30" y="20" width="60" height="80" rx="4" stroke="currentColor" stroke-width="2" fill="none"/>
+        <rect
+          x="30"
+          y="20"
+          width="60"
+          height="80"
+          rx="4"
+          stroke="currentColor"
+          stroke-width="2"
+          fill="none"
+        />
         <!-- 折角 -->
-        <path d="M75 20H75L90 35" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M75 20H90V35" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M75 20H75L90 35"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M75 20H90V35"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
         <!-- 文本行 -->
-        <line x1="40" y1="45" x2="80" y2="45" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <line x1="40" y1="55" x2="70" y2="55" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <line x1="40" y1="65" x2="75" y2="65" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <line x1="40" y1="75" x2="60" y2="75" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line
+          x1="40"
+          y1="45"
+          x2="80"
+          y2="45"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
+        <line
+          x1="40"
+          y1="55"
+          x2="70"
+          y2="55"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
+        <line
+          x1="40"
+          y1="65"
+          x2="75"
+          y2="65"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
+        <line
+          x1="40"
+          y1="75"
+          x2="60"
+          y2="75"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
         <!-- 底部装饰 -->
-        <circle cx="60" cy="100" r="8" stroke="currentColor" stroke-width="2" fill="none"/>
-        <line x1="56" y1="100" x2="64" y2="100" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <circle
+          cx="60"
+          cy="100"
+          r="8"
+          stroke="currentColor"
+          stroke-width="2"
+          fill="none"
+        />
+        <line
+          x1="56"
+          y1="100"
+          x2="64"
+          y2="100"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
       </svg>
 
       <!-- 搜索无结果状态 -->
-      <svg v-else-if="type === 'search'" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg
+        v-else-if="type === 'search'"
+        viewBox="0 0 120 120"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
         <!-- 放大镜 -->
-        <circle cx="55" cy="50" r="22" stroke="currentColor" stroke-width="2" fill="none"/>
-        <line x1="72" y1="67" x2="88" y2="83" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <circle
+          cx="55"
+          cy="50"
+          r="22"
+          stroke="currentColor"
+          stroke-width="2"
+          fill="none"
+        />
+        <line
+          x1="72"
+          y1="67"
+          x2="88"
+          y2="83"
+          stroke="currentColor"
+          stroke-width="3"
+          stroke-linecap="round"
+        />
         <!-- 问号 -->
-        <text x="52" y="56" font-size="18" font-weight="bold" fill="currentColor" text-anchor="middle">?</text>
+        <text
+          x="52"
+          y="56"
+          font-size="18"
+          font-weight="bold"
+          fill="currentColor"
+          text-anchor="middle"
+        >?</text>
         <!-- 底部线条 -->
-        <line x1="35" y1="100" x2="85" y2="100" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 4"/>
+        <line
+          x1="35"
+          y1="100"
+          x2="85"
+          y2="100"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-dasharray="4 4"
+        />
       </svg>
 
       <!-- 错误状态 -->
-      <svg v-else-if="type === 'error'" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg
+        v-else-if="type === 'error'"
+        viewBox="0 0 120 120"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
         <!-- 警告三角形 -->
-        <path d="M60 20L95 95H25L60 20Z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        <path
+          d="M60 20L95 95H25L60 20Z"
+          stroke="currentColor"
+          stroke-width="2"
+          fill="none"
+          stroke-linejoin="round"
+        />
         <!-- 感叹号 -->
-        <line x1="60" y1="45" x2="60" y2="70" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-        <circle cx="60" cy="82" r="3" fill="currentColor"/>
+        <line
+          x1="60"
+          y1="45"
+          x2="60"
+          y2="70"
+          stroke="currentColor"
+          stroke-width="3"
+          stroke-linecap="round"
+        />
+        <circle
+          cx="60"
+          cy="82"
+          r="3"
+          fill="currentColor"
+        />
         <!-- 底部装饰 -->
-        <line x1="35" y1="100" x2="85" y2="100" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line
+          x1="35"
+          y1="100"
+          x2="85"
+          y2="100"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
       </svg>
     </div>
 
     <!-- 文本内容 -->
     <div class="empty-content">
-      <h3 class="empty-title">{{ currentTitle }}</h3>
-      <p class="empty-description">{{ currentDescription }}</p>
+      <h3 class="empty-title">
+        {{ currentTitle }}
+      </h3>
+      <p class="empty-description">
+        {{ currentDescription }}
+      </p>
     </div>
 
     <!-- 操作按钮 -->
-    <el-button 
-      v-if="showAction && actionText" 
-      type="primary" 
+    <el-button
+      v-if="showAction && actionText"
+      type="primary"
       class="empty-action"
       @click="handleAction"
     >

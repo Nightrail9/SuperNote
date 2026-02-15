@@ -8,11 +8,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { loadConfig } from '../config.js';
+import { DefaultAIOrganizer, type AIOrganizer } from './ai-organizer.js';
 import {
   getAppData,
   type LocalTranscriberConfigRecord,
   type VideoUnderstandingConfigRecord,
 } from './app-data-store.js';
+import { logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
+import {
+  createKeyframeSelector,
+  type KeyframeRecord,
+  type KeyframeSelector,
+  type KeyframeStats,
+} from './keyframe-selector.js';
+import { createLocalTranscriber, toTranscriptMarkdown, type LocalTranscriber } from './local-transcriber.js';
 import {
   DefaultBilibiliVideoParser,
   DefaultVideoDownloader,
@@ -22,15 +31,6 @@ import {
   type VideoDownloader,
   type VideoInfo,
 } from './pipeline-utils.js';
-import { DefaultAIOrganizer, type AIOrganizer } from './ai-organizer.js';
-import {
-  createKeyframeSelector,
-  type KeyframeRecord,
-  type KeyframeSelector,
-  type KeyframeStats,
-} from './keyframe-selector.js';
-import { createLocalTranscriber, toTranscriptMarkdown, type LocalTranscriber } from './local-transcriber.js';
-import { logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
 import { getErrorMessage } from '../utils/http-error.js';
 
 /** 流水线配置 */
@@ -216,7 +216,7 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
 
       // 阶段 3：本地转写
       let transcriptMarkdown = '';
-      let displayTitle = buildDisplayTitle(videoInfo.title, videoInfo.part, videoInfo.partTitle);
+      const displayTitle = buildDisplayTitle(videoInfo.title, videoInfo.part, videoInfo.partTitle);
       options?.onProgress?.({ stage: 'local_transcribe', progress: 0.68, message: '正在执行本地转写' });
       try {
         const transcript = await this.runWithTimeout(

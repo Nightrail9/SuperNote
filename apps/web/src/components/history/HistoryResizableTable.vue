@@ -219,9 +219,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="containerRef" v-loading="loading" class="history-table-v2-wrap">
-    <div class="history-table-v2" :style="{ minWidth: `${tableMinWidth}px` }">
-      <div class="history-table-v2-header" :style="{ gridTemplateColumns }">
+  <div
+    ref="containerRef"
+    v-loading="loading"
+    class="history-table-v2-wrap"
+  >
+    <div
+      class="history-table-v2"
+      :style="{ minWidth: `${tableMinWidth}px` }"
+    >
+      <div
+        class="history-table-v2-header"
+        :style="{ gridTemplateColumns }"
+      >
         <div
           v-for="(column, columnIndex) in columns"
           :key="column.key"
@@ -243,8 +253,17 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="rows.length" class="history-table-v2-body" :style="bodyMinHeight ? { minHeight: bodyMinHeight } : undefined">
-        <div v-for="(row, rowIndex) in rows" :key="rowIdentity(row, rowIndex)" class="history-table-v2-row" :style="{ gridTemplateColumns }">
+      <div
+        v-if="rows.length"
+        class="history-table-v2-body"
+        :style="bodyMinHeight ? { minHeight: bodyMinHeight } : undefined"
+      >
+        <div
+          v-for="(row, rowIndex) in rows"
+          :key="rowIdentity(row, rowIndex)"
+          class="history-table-v2-row"
+          :style="{ gridTemplateColumns }"
+        >
           <div
             v-for="column in columns"
             :key="column.key"
@@ -255,15 +274,26 @@ onBeforeUnmount(() => {
               column.align === 'right' ? 'history-table-v2-cell--right' : '',
             ]"
           >
-            <slot :name="`cell-${column.key}`" :row="row" :index="rowIndex">
+            <slot
+              :name="`cell-${column.key}`"
+              :row="row"
+              :index="rowIndex"
+            >
               <span class="history-table-v2-plain-text">{{ cellValue(row, column.key) }}</span>
             </slot>
           </div>
         </div>
       </div>
 
-      <div v-else-if="!loading" class="history-table-v2-empty" :style="bodyMinHeight ? { minHeight: bodyMinHeight } : undefined">
-        <el-empty :description="emptyText" :image-size="92" />
+      <div
+        v-else-if="!loading"
+        class="history-table-v2-empty"
+        :style="bodyMinHeight ? { minHeight: bodyMinHeight } : undefined"
+      >
+        <el-empty
+          :description="emptyText"
+          :image-size="92"
+        />
       </div>
     </div>
   </div>

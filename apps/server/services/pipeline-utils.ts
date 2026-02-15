@@ -11,9 +11,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
 import { pipeline as pipelineStream } from 'stream/promises';
+
 import { logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
-import { isRetryableError, sleep } from '../utils/retry.js';
 import { RETRY_CONFIG } from '../constants/index.js';
+import { isRetryableError, sleep } from '../utils/retry.js';
 
 /**
  * Default retry configuration - re-exported from constants for backward compatibility
@@ -59,7 +60,7 @@ export interface VideoDownloader {
 export class DefaultBilibiliVideoParser implements BilibiliVideoParser {
   async parseVideo(url: string, part: number): Promise<VideoInfo | null> {
     try {
-      const { normalize, extract, fetchMetadata, fetchPlayUrl, QUALITY_PARAMS, FORMAT_FLAGS } = 
+      const { normalize, extract, fetchMetadata, fetchPlayUrl, QUALITY_PARAMS, FORMAT_FLAGS } =
         await import('../../../packages/parser-core/src/index.js');
 
       // Build URL with part parameter
@@ -105,11 +106,11 @@ export class DefaultBilibiliVideoParser implements BilibiliVideoParser {
 
       // Step 4: Fetch play URL with FLV format (same as original script)
       const playUrlResult = await fetchPlayUrl(
-        { 
-          bvid: metadata.bvid, 
-          cid: metadata.cid, 
-          qn: QUALITY_PARAMS.QN_1080P, 
-          fnval: FORMAT_FLAGS.FLV 
+        {
+          bvid: metadata.bvid,
+          cid: metadata.cid,
+          qn: QUALITY_PARAMS.QN_1080P,
+          fnval: FORMAT_FLAGS.FLV
         },
         {}
       );
@@ -141,7 +142,6 @@ export class DefaultBilibiliVideoParser implements BilibiliVideoParser {
     }
   }
 }
-
 
 /**
  * Default video downloader implementation using fetch
@@ -270,4 +270,3 @@ export function generateTempFilePath(tempDir: string, part: number): string {
   const filename = `bili_p${part}_${timestamp}.mp4`;
   return path.join(tempDir, filename);
 }
-

@@ -1,11 +1,12 @@
+import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
-import { execFile } from 'child_process';
+
 import { createId, type LocalTranscriberConfigRecord } from './app-data-store.js';
+import { resolveFfmpegBin, resolveFfprobeBin } from '../utils/ffmpeg-resolver.js';
 import { getErrorMessage } from '../utils/http-error.js';
 import { resolveCommand, getProjectRoot } from '../utils/path-resolver.js';
-import { resolveFfmpegBin, resolveFfprobeBin } from '../utils/ffmpeg-resolver.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -125,15 +126,15 @@ export class WhisperCliTranscriber implements LocalTranscriber {
       : process.env.PATH;
 
     const scriptPath = path.join(getProjectRoot(), 'apps', 'server', 'scripts', 'transcribe_faster_whisper.py');
-    
-    // Determine python command. 
+
+    // Determine python command.
     // If config.command looks like a python executable (contains 'python'), use it.
     // Otherwise (e.g. if it is 'whisper' from old config), fall back to 'python'.
     let pythonBin = 'python';
     if (config.command && config.command.toLowerCase().includes('python')) {
       pythonBin = resolveCommand(config.command);
     }
-    
+
     const args = [
       scriptPath,
       audioPath,
@@ -158,7 +159,7 @@ export class WhisperCliTranscriber implements LocalTranscriber {
     // For now we rely on script default or 'default'.
 
     const effectiveTimeoutMs = await this.resolveAdaptiveTimeoutMs(audioPath, config, ffmpegBin);
-    
+
     let whisperStdout = '';
     let whisperStderr = '';
     try {
@@ -178,7 +179,7 @@ export class WhisperCliTranscriber implements LocalTranscriber {
     } catch (error) {
       const message = getErrorMessage(error);
       if (/enoent/i.test(message)) {
-        throw new Error(`未找到 Python 环境或脚本。请确保已安装 Python 并安装了 faster-whisper`);
+        throw new Error('未找到 Python 环境或脚本。请确保已安装 Python 并安装了 faster-whisper');
       }
       if (/timed out|timeout/i.test(message)) {
         throw new Error(
