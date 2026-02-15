@@ -1,0 +1,67 @@
+{
+  "name": "libsqlite",
+  "version": "3.51.2",
+  "build": "hf5d6505_0",
+  "build_number": 0,
+  "channel": "https://conda.anaconda.org/conda-forge/win-64",
+  "subdir": "win-64",
+  "fn": "libsqlite-3.51.2-hf5d6505_0.conda",
+  "md5": "903979414b47d777d548e5f0165e6cd8",
+  "url": "https://conda.anaconda.org/conda-forge/win-64/libsqlite-3.51.2-hf5d6505_0.conda",
+  "sha256": "756478128e3e104bd7e7c3ce6c1b0efad7e08c7320c69fdc726e039323c63fbb",
+  "depends": [
+    "ucrt >=10.0.20348.0",
+    "vc >=14.3,<15",
+    "vc14_runtime >=14.44.35208"
+  ],
+  "constrains": [],
+  "license": "blessing",
+  "timestamp": 1768148278000,
+  "size": 1291616,
+  "requested_spec": "None",
+  "package_tarball_full_path": "D:\\ProgramSoftware\\Conda\\pkgs\\libsqlite-3.51.2-hf5d6505_0.conda",
+  "extracted_package_dir": "D:\\ProgramSoftware\\Conda\\pkgs\\libsqlite-3.51.2-hf5d6505_0",
+  "files": [
+    "Library/bin/sqlite3.dll",
+    "Library/include/sqlite3.h",
+    "Library/include/sqlite3ext.h",
+    "Library/lib/sqlite3.lib"
+  ],
+  "paths_data": {
+    "paths_version": 1,
+    "paths": [
+      {
+        "_path": "Library/bin/sqlite3.dll",
+        "path_type": "hardlink",
+        "sha256": "a9d6c89ff3b00e28663888e2e97c21a03b329c914208c9216ddd95ccc2326eae",
+        "size_in_bytes": 3196416,
+        "sha256_in_prefix": "a9d6c89ff3b00e28663888e2e97c21a03b329c914208c9216ddd95ccc2326eae"
+      },
+      {
+        "_path": "Library/include/sqlite3.h",
+        "path_type": "hardlink",
+        "sha256": "6c8b9f648f36c84b0eeb3239b1e6f32b459d2c859d905ba5d59153c3569e6562",
+        "size_in_bytes": 671786,
+        "sha256_in_prefix": "6c8b9f648f36c84b0eeb3239b1e6f32b459d2c859d905ba5d59153c3569e6562"
+      },
+      {
+        "_path": "Library/include/sqlite3ext.h",
+        "path_type": "hardlink",
+        "sha256": "ea81fb7bd05882e0e0b92c4d60f677b205f7f1fbf085f218b12f0b5b3f0b9e48",
+        "size_in_bytes": 38632,
+        "sha256_in_prefix": "ea81fb7bd05882e0e0b92c4d60f677b205f7f1fbf085f218b12f0b5b3f0b9e48"
+      },
+      {
+        "_path": "Library/lib/sqlite3.lib",
+        "path_type": "hardlink",
+        "sha256": "2543e8667101766ec51bcf40b4915a70af5987a04cbf862fa400d465baf6a8d8",
+        "size_in_bytes": 82638,
+        "sha256_in_prefix": "2543e8667101766ec51bcf40b4915a70af5987a04cbf862fa400d465baf6a8d8"
+      }
+    ]
+  },
+  "link": {
+    "source": "D:\\ProgramSoftware\\Conda\\pkgs\\libsqlite-3.51.2-hf5d6505_0",
+    "type": 1
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "liblzma",
+  "version": "5.8.2",
+  "build": "hfd05255_0",
+  "build_number": 0,
+  "channel": "https://conda.anaconda.org/conda-forge/win-64",
+  "subdir": "win-64",
+  "fn": "liblzma-5.8.2-hfd05255_0.conda",
+  "md5": "ba0bfd4c3cf73f299ffe46ff0eaeb8e3",
+  "url": "https://conda.anaconda.org/conda-forge/win-64/liblzma-5.8.2-hfd05255_0.conda",
+  "sha256": "f25bf293f550c8ed2e0c7145eb404324611cfccff37660869d97abf526eb957c",
+  "depends": [
+    "ucrt >=10.0.20348.0",
+    "vc >=14.3,<15",
+    "vc14_runtime >=14.44.35208"
+  ],
+  "constrains": [
+    "xz 5.8.2.*"
+  ],
+  "license": "0BSD",
+  "timestamp": 1768752763000,
+  "size": 106169,
+  "requested_spec": "None",
+  "package_tarball_full_path": "D:\\ProgramSoftware\\Conda\\pkgs\\liblzma-5.8.2-hfd05255_0.conda",
+  "extracted_package_dir": "D:\\ProgramSoftware\\Conda\\pkgs\\liblzma-5.8.2-hfd05255_0",
+  "files": [
+    "Library/bin/liblzma.dll"
+  ],
+  "paths_data": {
+    "paths_version": 1,
+    "paths": [
+      {
+        "_path": "Library/bin/liblzma.dll",
+        "path_type": "hardlink",
+        "sha256": "c8bbdf05499afa44fd862484b4f98f2855792ff62ea05e10b7cdf3020f999e3b",
+        "size_in_bytes": 188416,
+        "sha256_in_prefix": "c8bbdf05499afa44fd862484b4f98f2855792ff62ea05e10b7cdf3020f999e3b"
+      }
+    ]
+  },
+  "link": {
+    "source": "D:\\ProgramSoftware\\Conda\\pkgs\\liblzma-5.8.2-hfd05255_0",
+    "type": 1
+  }
+}

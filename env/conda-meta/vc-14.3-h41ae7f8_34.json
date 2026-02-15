@@ -1,0 +1,32 @@
+{
+  "name": "vc",
+  "version": "14.3",
+  "build": "h41ae7f8_34",
+  "build_number": 34,
+  "channel": "https://conda.anaconda.org/conda-forge/win-64",
+  "subdir": "win-64",
+  "fn": "vc-14.3-h41ae7f8_34.conda",
+  "md5": "1e610f2416b6acdd231c5f573d754a0f",
+  "url": "https://conda.anaconda.org/conda-forge/win-64/vc-14.3-h41ae7f8_34.conda",
+  "sha256": "9dc40c2610a6e6727d635c62cced5ef30b7b30123f5ef67d6139e23d21744b3a",
+  "depends": [
+    "vc14_runtime >=14.44.35208"
+  ],
+  "constrains": [],
+  "track_features": "vc14",
+  "license": "BSD-3-Clause",
+  "timestamp": 1767320221000,
+  "size": 19356,
+  "requested_spec": "None",
+  "package_tarball_full_path": "D:\\ProgramSoftware\\Conda\\pkgs\\vc-14.3-h41ae7f8_34.conda",
+  "extracted_package_dir": "D:\\ProgramSoftware\\Conda\\pkgs\\vc-14.3-h41ae7f8_34",
+  "files": [],
+  "paths_data": {
+    "paths_version": 1,
+    "paths": []
+  },
+  "link": {
+    "source": "D:\\ProgramSoftware\\Conda\\pkgs\\vc-14.3-h41ae7f8_34",
+    "type": 1
+  }
+}

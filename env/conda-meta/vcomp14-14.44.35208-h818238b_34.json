@@ -1,0 +1,52 @@
+{
+  "name": "vcomp14",
+  "version": "14.44.35208",
+  "build": "h818238b_34",
+  "build_number": 34,
+  "channel": "https://conda.anaconda.org/conda-forge/win-64",
+  "subdir": "win-64",
+  "fn": "vcomp14-14.44.35208-h818238b_34.conda",
+  "md5": "242d9f25d2ae60c76b38a5e42858e51d",
+  "url": "https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.44.35208-h818238b_34.conda",
+  "sha256": "878d5d10318b119bd98ed3ed874bd467acbe21996e1d81597a1dbf8030ea0ce6",
+  "depends": [
+    "ucrt >=10.0.20348.0"
+  ],
+  "constrains": [
+    "vs2015_runtime 14.44.35208.* *_34"
+  ],
+  "license": "LicenseRef-MicrosoftVisualCpp2015-2022Runtime",
+  "timestamp": 1767320173000,
+  "size": 115235,
+  "requested_spec": "None",
+  "package_tarball_full_path": "D:\\ProgramSoftware\\Conda\\pkgs\\vcomp14-14.44.35208-h818238b_34.conda",
+  "extracted_package_dir": "D:\\ProgramSoftware\\Conda\\pkgs\\vcomp14-14.44.35208-h818238b_34",
+  "files": [
+    "Library/bin/vcomp140.dll",
+    "vcomp140.dll"
+  ],
+  "paths_data": {
+    "paths_version": 1,
+    "paths": [
+      {
+        "_path": "Library/bin/vcomp140.dll",
+        "no_link": true,
+        "path_type": "hardlink",
+        "sha256": "e7e50211906ab1c6226a3133fda8d8c8e35a23a8b6c6133c9606601604680b85",
+        "size_in_bytes": 193184,
+        "sha256_in_prefix": "e7e50211906ab1c6226a3133fda8d8c8e35a23a8b6c6133c9606601604680b85"
+      },
+      {
+        "_path": "vcomp140.dll",
+        "path_type": "hardlink",
+        "sha256": "e7e50211906ab1c6226a3133fda8d8c8e35a23a8b6c6133c9606601604680b85",
+        "size_in_bytes": 193184,
+        "sha256_in_prefix": "e7e50211906ab1c6226a3133fda8d8c8e35a23a8b6c6133c9606601604680b85"
+      }
+    ]
+  },
+  "link": {
+    "source": "D:\\ProgramSoftware\\Conda\\pkgs\\vcomp14-14.44.35208-h818238b_34",
+    "type": 1
+  }
+}
