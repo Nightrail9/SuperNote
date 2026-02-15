@@ -2,44 +2,18 @@
 
 [English Documentation](./README.md)
 
-SuperNote 是一个本地优先的笔记生成工具，支持 B 站视频与网页链接。项目使用本地转写（Whisper）、关键帧提取和 AI 整理，输出结构化笔记。
+SuperNote 是一个本地优先的笔记生成工具，支持 B 站链接和网页链接，自动生成可编辑的结构化笔记与草稿。
 
-## 核心特性
+## 快速安装（推荐）
 
-- 本地优先：音视频处理链路尽量在本机完成。
-- 前后端分离：Vue 3 前端 + Express 后端。
-- 支持 B 站链接与网页链接生成任务。
-- 任务化流程：可查看进度、失败重试、结果保存。
+### 1）准备环境
 
-## 目录结构（重构后）
-
-```text
-.
-├── apps/
-│   ├── server/                # 后端 API
-│   └── web/                   # 前端应用
-├── packages/
-│   └── parser-core/           # 解析核心库
-├── scripts/
-│   ├── dev/                   # 安装/启动主脚本
-│   └── test/                  # 测试脚本
-├── infra/
-│   └── docker/                # Docker 部署文件（主入口）
-├── storage/                   # 运行时数据
-├── tools/                     # 本地工具目录（如 ffmpeg）
-├── AGENTS.md
-├── package.json
-└── tsconfig.json
-```
-
-## 环境要求
-
-- Node.js >= 18
-- npm >= 9
-- Python >= 3.10（本地 ASR 相关功能）
+- Node.js `>= 18`
+- npm `>= 9`
+- Python `>= 3.10`
 - FFmpeg（系统 PATH 或 `tools/ffmpeg/bin`）
 
-## 安装
+### 2）安装依赖
 
 在项目根目录执行：
 
@@ -48,34 +22,33 @@ npm install
 npm --prefix apps/web install
 ```
 
-Windows 可直接运行：
+### 3）创建环境变量文件
 
-```bat
-setup.bat
+```bash
+cp .env.example .env
 ```
 
-说明：
+Windows PowerShell：
 
-- 主安装脚本位于 `scripts/dev/setup.bat`。
-- 根目录 `setup.bat` 是兼容包装器。
+```powershell
+Copy-Item .env.example .env
+```
 
-## 开发启动
+### 4）本地启动
 
-### 启动后端
+启动后端：
 
 ```bash
 npm run dev
-# 或
-npm run dev:server
 ```
 
-### 启动前端
+启动前端：
 
 ```bash
 npm run dev:web
 ```
 
-### 一键启动（兼容入口）
+或使用一键脚本：
 
 ```bat
 start.bat
@@ -85,44 +58,23 @@ start.bat
 ./start.sh
 ```
 
-说明：
+## Docker 安装与部署
 
-- 主启动脚本位于 `scripts/dev/`。
-- 根目录 `start.bat`、`start.sh` 为兼容包装器。
+Docker 主入口位于 `infra/docker/`。
 
-## 构建与类型检查
-
-```bash
-npm run build
-npm run build:web
-npm run typecheck
-```
-
-## 测试
-
-运行单个后端测试文件：
+### 1）创建环境变量文件
 
 ```bash
-npm run test:server:file -- apps/server/routes/settings-url.test.ts
+cp .env.example .env
 ```
 
-运行全部后端测试：
-
-```bash
-npm run test:server:all
-```
-
-## Docker 部署
-
-Docker 主入口已统一为 `infra/docker/`。
-
-校验配置：
+### 2）校验 compose
 
 ```bash
 npm run docker:config
 ```
 
-启动服务：
+### 3）构建并启动
 
 ```bash
 npm run docker:up
@@ -134,11 +86,68 @@ npm run docker:up
 docker compose -f infra/docker/docker-compose.yml up -d
 ```
 
+### 4）安装成功验证
+
+- 应用地址：`http://localhost:3000`
+- 健康检查：`http://localhost:3000/health`
+
+## 常见安装问题（Windows/Linux）
+
+- `npm install` 出现网络或 SSL 错误：切换可用 npm 源后重试。
+- 找不到 Python 或 Whisper：确认 Python `>=3.10` 已安装并加入 PATH。
+- 找不到 FFmpeg：安装 FFmpeg，并在终端执行 `ffmpeg -version` 验证。
+- `3000`/`3001` 端口被占用：先结束占用进程，或改用其他 `PORT`。
+- Docker 启动后健康检查失败：执行 `docker compose -f infra/docker/docker-compose.yml logs -f`，并确认 `.env` 已创建。
+- Linux 下 `storage/` 权限不足：执行 `mkdir -p storage/data storage/temp storage/public` 并确保当前用户可写。
+
+## 项目演示截图
+
+### 笔记
+
+![笔记](images/笔记.png)
+
+### 草稿箱
+
+![草稿箱](images/草稿箱.png)
+
+### 网页链接生成笔记
+
+![网页链接生成笔记](images/网页链接生成笔记.png)
+
+### 网页生成任务
+
+![网页生成任务](images/网页生成任务.png)
+
+### 网页生成中
+
+![网页生成中](images/网页生成中.png)
+
+### B站链接生成笔记
+
+![B站链接生成笔记](images/B站链接生成笔记.png)
+
+### B站生成任务
+
+![B站生成任务](images/B站生成任务.png)
+
+### B站生成中
+
+![B站生成中](images/B站生成中.png)
+
+## 常用命令
+
+```bash
+npm run build
+npm run build:web
+npm run typecheck
+npm run test:server:all
+```
+
 ## 运行数据说明
 
-- `storage/data`：持久化数据。
-- `storage/temp`：临时处理文件。
-- `storage/public`：生成的静态资源。
+- `storage/data`：持久化数据
+- `storage/temp`：临时处理文件
+- `storage/public`：生成的静态资源
 
 请勿提交 `.env` 中的密钥，或 `storage/` 中的运行时敏感数据。
 

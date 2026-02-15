@@ -19,9 +19,10 @@ services:
     volumes:
       - ../../storage/data:/app/storage/data
       - ../../storage/temp:/app/storage/temp
+      - ../../storage/public:/app/storage/public
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/settings/env-check"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
