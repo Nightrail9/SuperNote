@@ -602,6 +602,7 @@ onBeforeUnmount(() => {
         </div>
         <el-progress
           :percentage="progressValue"
+          :show-text="false"
           :stroke-width="10"
           status=""
         />

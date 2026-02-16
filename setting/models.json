@@ -3,7 +3,7 @@
     "id": "chatgpt_prod",
     "provider": "chatgpt",
     "enabled": true,
-    "isDefault": true,
+    "isDefault": false,
     "baseUrl": "https://api.openai.com/v1",
     "modelName": "gpt-5-mini",
     "timeoutMs": 60000
@@ -16,5 +16,13 @@
     "baseUrl": "https://api-inference.modelscope.cn/v1",
     "modelName": "moonshotai/Kimi-K2.5",
     "timeoutMs": 60000
+  },
+  {
+    "id": "魔搭社区",
+    "provider": "openai_compatible",
+    "enabled": true,
+    "isDefault": true,
+    "baseUrl": "https://api-inference.modelscope.cn/v1",
+    "modelName": "moonshotai/Kimi-K2.5"
   }
 ]
