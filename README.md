@@ -55,7 +55,8 @@ Windows PowerShell：
 Copy-Item .env.example .env
 ```
 
-模型配置统一保存在 `data/app-settings.json`，不再写入 `.env`。
+应用配置统一保存在 `setting/*.json`，历史数据保存在 `data/notes.json`、`data/drafts.json`、`data/tasks.json`。
+密钥仅保存在 `.env`（`JINA_API_KEY`、`MODEL_API_KEY_<MODEL_ID>`），端点与超时等参数不写入 `.env`。
 
 ### 4. 启动服务
 
@@ -100,6 +101,11 @@ docker compose -f infra/docker/docker-compose.yml up -d
 
 - 应用地址：`http://localhost:3000`
 - 健康检查：`http://localhost:3000/health`
+
+Docker 会持久化以下目录：
+
+- `data/` -> `/app/data`
+- `setting/` -> `/app/setting`
 
 ## 🛠️ 常用命令
 

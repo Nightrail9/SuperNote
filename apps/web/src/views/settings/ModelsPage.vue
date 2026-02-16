@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 
 import { api } from '../../api/modules'
+import HistoryResizableTable from '../../components/history/HistoryResizableTable.vue'
 import PageBlock from '../../components/PageBlock.vue'
 import type { ModelConfig, ModelProvider } from '../../types/domain'
 import { toArrayData } from '../../utils/api-data'
@@ -66,6 +67,16 @@ const models = ref<EditableModel[]>([])
 const showModelModal = ref(false)
 const modelEditingId = ref<string | null>(null)
 const modelForm = ref<ModelForm>(createEmptyModelForm())
+
+const MODEL_FIXED_BODY_ROWS = 7
+const tableColumns = [
+  { key: 'status', label: '状态', minWidth: 118, flex: 1.1 },
+  { key: 'id', label: '名称', minWidth: 220, flex: 1.35 },
+  { key: 'provider', label: '类型', minWidth: 200, flex: 1.2 },
+  { key: 'modelName', label: '模型', minWidth: 240, flex: 1.3 },
+  { key: 'apiKeyMasked', label: 'API Key', minWidth: 260, flex: 1.5 },
+  { key: 'actions', label: '操作', minWidth: 180, flex: 1, freeze: 'right' as const, align: 'center' as const },
+]
 
 const orderedModels = computed(() => {
   return [...models.value].sort((a, b) => {
@@ -208,6 +219,15 @@ function openEditModelModal(item: EditableModel) {
     isDefault: Boolean(item.isDefault),
   }
   showModelModal.value = true
+}
+
+function toEditableModel(item: EditableModel | Record<string, any>) {
+  return item as EditableModel
+}
+
+function resolveProviderLabel(item: EditableModel | Record<string, any>) {
+  const model = item as EditableModel
+  return providerLabelMap[model.provider] ?? model.provider
 }
 
 function closeModelModal() {
@@ -353,124 +373,115 @@ onMounted(() => {
           </el-button>
         </div>
 
-        <div class="provider-table">
-          <div class="table-header">
-            <div class="col-status">
-              状态
-            </div>
-            <div class="col-name">
-              名称
-            </div>
-            <div class="col-provider">
-              类型
-            </div>
-            <div class="col-model">
-              模型
-            </div>
-            <div class="col-apikey">
-              API Key
-            </div>
-            <div class="col-actions">
-              操作
-            </div>
-          </div>
-
-          <div
-            v-for="item in orderedModels"
-            :key="item.id"
-            class="table-row"
-            :class="{ active: item.isDefault }"
+        <div class="models-table-wrap">
+          <HistoryResizableTable
+            :rows="orderedModels"
+            :columns="tableColumns"
+            :loading="loading"
+            :fixed-body-rows="MODEL_FIXED_BODY_ROWS"
+            :max-body-rows="MODEL_FIXED_BODY_ROWS"
+            empty-text="暂无模型配置，请先添加"
           >
-            <div class="col-status">
+            <template #cell-status="{ row }">
               <button
                 class="btn-activate"
-                :class="{ active: item.isDefault }"
-                :disabled="item.isDefault || saving"
-                @click="activateModel(item.id)"
+                :class="{ active: row.isDefault }"
+                :disabled="row.isDefault || saving"
+                @click="activateModel(row.id)"
               >
-                {{ item.isDefault ? '已激活' : '激活' }}
+                {{ row.isDefault ? '已激活' : '激活' }}
               </button>
-            </div>
+            </template>
 
-            <div class="col-name">
-              <span class="provider-name">{{ item.id }}</span>
-            </div>
-            <div class="col-provider">
-              <span class="provider-type">{{ providerLabelMap[item.provider] }}</span>
-            </div>
-            <div class="col-model">
-              <span class="model-name">{{ item.modelName || '未配置' }}</span>
-            </div>
-            <div class="col-apikey">
-              <span
-                class="apikey-masked"
-                :class="{ empty: !item.apiKeyMasked }"
-              >{{ item.apiKeyMasked || '未配置' }}</span>
-            </div>
+            <template #cell-id="{ row }">
+              <el-text class="provider-name">{{ row.id }}</el-text>
+            </template>
 
-            <div class="col-actions">
-              <button
-                class="btn-icon"
-                :disabled="saving || testingListId === item.id"
-                title="测试连接"
-                @click="testModelInList(item)"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                </svg>
-              </button>
-              <button
-                class="btn-icon"
-                :disabled="saving"
-                title="编辑"
-                @click="openEditModelModal(item)"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-              </button>
-              <button
-                class="btn-icon danger"
-                :disabled="saving || models.length <= 1"
-                title="删除"
-                @click="deleteModel(item.id)"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg>
-              </button>
-            </div>
-          </div>
+            <template #cell-provider="{ row }">
+              <span class="provider-type">{{ resolveProviderLabel(row) }}</span>
+            </template>
 
-          <div
-            v-if="models.length === 0"
-            class="empty-hint"
-          >
-            暂无模型配置，请先添加
-          </div>
+            <template #cell-modelName="{ row }">
+              <el-tooltip
+                :content="row.modelName || '未配置'"
+                placement="top-start"
+                :show-after="200"
+              >
+                <span class="model-name">{{ row.modelName || '未配置' }}</span>
+              </el-tooltip>
+            </template>
+
+            <template #cell-apiKeyMasked="{ row }">
+              <el-tooltip
+                :content="row.apiKeyMasked || '未配置'"
+                placement="top-start"
+                :show-after="200"
+              >
+                <span
+                  class="apikey-masked"
+                  :class="{ empty: !row.apiKeyMasked }"
+                >{{ row.apiKeyMasked || '未配置' }}</span>
+              </el-tooltip>
+            </template>
+
+            <template #cell-actions="{ row }">
+              <div class="table-actions">
+                <button
+                  class="btn-icon"
+                  :disabled="saving || testingListId === row.id"
+                  title="测试连接"
+                  @click="testModelInList(toEditableModel(row))"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  </svg>
+                </button>
+                <button
+                  class="btn-icon"
+                  :disabled="saving"
+                  title="编辑"
+                  @click="openEditModelModal(toEditableModel(row))"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button
+                  class="btn-icon danger"
+                  :disabled="saving || models.length <= 1"
+                  title="删除"
+                  @click="deleteModel(row.id)"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </template>
+          </HistoryResizableTable>
         </div>
       </section>
     </div>
@@ -640,39 +651,8 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.provider-table {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.table-header {
-  display: grid;
-  grid-template-columns: 90px 1fr 130px 1fr 1.2fr 120px;
-  gap: 10px;
-  padding: 12px 14px;
-  background: #f6ecdf;
-  border-bottom: 1px solid var(--border-soft);
-  font-size: 12px;
-  font-weight: 600;
-  color: #5b4d3c;
-}
-
-.table-row {
-  display: grid;
-  grid-template-columns: 90px 1fr 130px 1fr 1.2fr 120px;
-  gap: 10px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border-soft);
-  align-items: center;
-}
-
-.table-row:last-child {
-  border-bottom: none;
-}
-
-.table-row.active {
-  background: #f3f9f7;
+.models-table-wrap {
+  min-height: 0;
 }
 
 .btn-activate {
@@ -731,10 +711,10 @@ onMounted(() => {
   color: #b88a1f;
 }
 
-.col-actions {
+.table-actions {
   display: flex;
   gap: 6px;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .btn-icon {
@@ -760,12 +740,6 @@ onMounted(() => {
   border-color: #ef4444;
   color: #ef4444;
   background: rgba(239, 68, 68, 0.05);
-}
-
-.empty-hint {
-  padding: 18px 16px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
 }
 
 .modal-body {
@@ -855,14 +829,10 @@ onMounted(() => {
 }
 
 @media (max-width: 980px) {
-  .table-header,
-  .table-row {
-    grid-template-columns: 90px 1fr 1fr 120px;
-  }
-
-  .col-provider,
-  .col-apikey {
-    display: none;
+  .provider-type,
+  .model-name,
+  .apikey-masked {
+    font-size: 12px;
   }
 }
 
@@ -870,15 +840,6 @@ onMounted(() => {
   .section-head {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .table-header,
-  .table-row {
-    grid-template-columns: 1fr;
-  }
-
-  .col-actions {
-    justify-content: flex-start;
   }
 }
 </style>

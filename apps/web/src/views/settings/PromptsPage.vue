@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 
 import { api } from '../../api/modules'
+import HistoryResizableTable from '../../components/history/HistoryResizableTable.vue'
 import PageBlock from '../../components/PageBlock.vue'
 import type { PromptConfig } from '../../types/domain'
 import { toArrayData } from '../../utils/api-data'
@@ -24,6 +25,15 @@ const prompts = ref<PromptConfig[]>([])
 const showModal = ref(false)
 const editingId = ref<string | null>(null)
 const form = ref<PromptForm>({ id: '', name: '', template: '', isDefault: false })
+
+const PROMPT_FIXED_BODY_ROWS = 7
+const tableColumns = [
+  { key: 'status', label: '状态', minWidth: 118, flex: 1.1 },
+  { key: 'name', label: '模板名称', minWidth: 220, flex: 1.35 },
+  { key: 'snippet', label: '内容摘要', minWidth: 380, flex: 2.2 },
+  { key: 'updatedAt', label: '更新时间', minWidth: 210, flex: 1.25 },
+  { key: 'actions', label: '操作', minWidth: 160, flex: 1, freeze: 'right' as const, align: 'center' as const },
+]
 
 const orderedPrompts = computed(() => {
   return [...prompts.value].sort((a, b) => {
@@ -91,13 +101,14 @@ function openCreateModal() {
   showModal.value = true
 }
 
-function openEditModal(item: PromptConfig) {
-  editingId.value = item.id
+function openEditModal(item: PromptConfig | Record<string, any>) {
+  const target = item as PromptConfig
+  editingId.value = target.id
   form.value = {
-    id: item.id,
-    name: item.name,
-    template: item.template,
-    isDefault: item.isDefault,
+    id: target.id,
+    name: target.name,
+    template: target.template,
+    isDefault: target.isDefault,
   }
   showModal.value = true
 }
@@ -193,66 +204,69 @@ onMounted(() => {
         </el-button>
       </div>
 
-      <div class="prompt-table">
-        <div class="table-head">
-          <div>状态</div>
-          <div>模板名称</div>
-          <div>内容摘要</div>
-          <div>更新时间</div>
-          <div class="ops">
-            操作
-          </div>
-        </div>
-
-        <div
-          v-for="item in orderedPrompts"
-          :key="item.id"
-          class="table-row"
-          :class="{ active: item.isDefault }"
+      <div class="prompts-table-wrap">
+        <HistoryResizableTable
+          :rows="orderedPrompts"
+          :columns="tableColumns"
+          :loading="loading"
+          :fixed-body-rows="PROMPT_FIXED_BODY_ROWS"
+          :max-body-rows="PROMPT_FIXED_BODY_ROWS"
+          empty-text="暂无提示词模板"
         >
-          <div>
+          <template #cell-status="{ row }">
             <el-button
               size="small"
-              :type="item.isDefault ? 'success' : 'default'"
-              :disabled="item.isDefault || saving"
-              @click="setDefault(item.id)"
+              :type="row.isDefault ? 'success' : 'default'"
+              :disabled="row.isDefault || saving"
+              @click="setDefault(row.id)"
             >
-              {{ item.isDefault ? '默认' : '设为默认' }}
+              {{ row.isDefault ? '默认' : '设为默认' }}
             </el-button>
-          </div>
-          <div class="name">
-            {{ item.name }}
-          </div>
-          <div class="snippet">
-            {{ item.template.slice(0, 80) || '未填写模板内容' }}
-          </div>
-          <div class="time">
-            {{ item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-' }}
-          </div>
-          <div class="ops">
-            <el-button
-              text
-              @click="openEditModal(item)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              text
-              type="danger"
-              :disabled="prompts.length <= 1"
-              @click="removePrompt(item.id)"
-            >
-              删除
-            </el-button>
-          </div>
-        </div>
+          </template>
 
-        <div
-          v-if="orderedPrompts.length === 0"
-          class="empty"
-        >
-          暂无提示词模板
-        </div>
+          <template #cell-name="{ row }">
+            <el-text class="name-text">
+              {{ row.name }}
+            </el-text>
+          </template>
+
+          <template #cell-snippet="{ row }">
+            <el-tooltip
+              :content="row.template || '未填写模板内容'"
+              placement="top-start"
+              :show-after="200"
+            >
+              <el-text class="snippet-text">
+                {{ row.template?.slice(0, 80) || '未填写模板内容' }}
+              </el-text>
+            </el-tooltip>
+          </template>
+
+          <template #cell-updatedAt="{ row }">
+            <el-text class="time-text">
+              {{ row.updatedAt ? new Date(row.updatedAt).toLocaleString() : '-' }}
+            </el-text>
+          </template>
+
+          <template #cell-actions="{ row }">
+            <div class="table-actions">
+              <el-button
+                text
+                @click="openEditModal(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                text
+                type="danger"
+                :disabled="prompts.length <= 1"
+                @click="removePrompt(row.id)"
+              >
+                删除
+              </el-button>
+            </div>
+          </template>
+        </HistoryResizableTable>
       </div>
     </div>
 
@@ -337,66 +351,28 @@ onMounted(() => {
   color: var(--el-text-color-secondary);
 }
 
-.prompt-table {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
+.prompts-table-wrap {
+  min-height: 0;
 }
 
-.table-head,
-.table-row {
-  display: grid;
-  grid-template-columns: 110px 180px 1fr 180px 120px;
-  gap: 10px;
-  align-items: center;
-  padding: 12px 14px;
-}
-
-.table-head {
-  background: #f6ecdf;
-  border-bottom: 1px solid var(--border-soft);
-  font-size: 12px;
-  font-weight: 600;
-  color: #5b4d3c;
-}
-
-.table-row {
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.table-row:last-child {
-  border-bottom: none;
-}
-
-.table-row.active {
-  background: #f3f9f7;
-}
-
-.name {
+.name-text {
   font-weight: 600;
   color: #2f2a22;
 }
 
-.snippet {
+.snippet-text {
   color: var(--el-text-color-secondary);
-  font-size: 13px;
 }
 
-.time {
+.time-text {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
 
-.ops {
+.table-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 6px;
-}
-
-.empty {
-  padding: 24px;
-  color: var(--el-text-color-secondary);
-  text-align: center;
 }
 
 .modal-form {
@@ -410,32 +386,10 @@ onMounted(() => {
   gap: 8px;
 }
 
-@media (max-width: 960px) {
-  .table-head,
-  .table-row {
-    grid-template-columns: 110px 1fr 1fr;
-  }
-
-  .time,
-  .table-head .time,
-  .ops {
-    grid-column: auto;
-  }
-}
-
 @media (max-width: 720px) {
   .section-head {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .table-head,
-  .table-row {
-    grid-template-columns: 1fr;
-  }
-
-  .ops {
-    justify-content: flex-start;
   }
 }
 </style>

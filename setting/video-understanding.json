@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "maxFrames": 24,
+  "sceneThreshold": 0.3,
+  "perSceneMax": 2,
+  "minSceneGapSec": 2,
+  "dedupeHashDistance": 6,
+  "blackFrameLumaThreshold": 18,
+  "blurVarianceThreshold": 80,
+  "extractWidth": 640,
+  "timeoutMs": 120000
+}

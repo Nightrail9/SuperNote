@@ -9,11 +9,7 @@ import * as path from 'path';
 
 import { loadConfig } from '../config.js';
 import { DefaultAIOrganizer, type AIOrganizer } from './ai-organizer.js';
-import {
-  getAppData,
-  type LocalTranscriberConfigRecord,
-  type VideoUnderstandingConfigRecord,
-} from './app-data-store.js';
+import { type LocalTranscriberConfigRecord, type VideoUnderstandingConfigRecord } from './app-data-store.js';
 import { logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
 import {
   createKeyframeSelector,
@@ -31,6 +27,7 @@ import {
   type VideoDownloader,
   type VideoInfo,
 } from './pipeline-utils.js';
+import { getLocalTranscriber, getVideoUnderstanding } from './settings-store/index.js';
 import { getErrorMessage } from '../utils/http-error.js';
 
 /** 流水线配置 */
@@ -356,8 +353,8 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
  * 优先使用持久化配置，其次环境变量。
  */
 export function loadSummaryPipelineConfig(): SummaryPipelineConfig {
-  const localTranscriber = getAppData().settings.localTranscriber;
-  const videoUnderstanding = getAppData().settings.videoUnderstanding;
+  const localTranscriber = getLocalTranscriber();
+  const videoUnderstanding = getVideoUnderstanding();
 
   const serverConfig = loadConfig();
 

@@ -19,6 +19,7 @@ const props = withDefaults(
     rowKey?: string
     fitToContainer?: boolean
     fixedBodyRows?: number
+    maxBodyRows?: number
     estimatedRowHeight?: number
   }>(),
   {
@@ -27,6 +28,7 @@ const props = withDefaults(
     rowKey: 'id',
     fitToContainer: true,
     fixedBodyRows: 0,
+    maxBodyRows: 0,
     estimatedRowHeight: 54,
   },
 )
@@ -56,6 +58,29 @@ const bodyMinHeight = computed(() => {
     return undefined
   }
   return `${Math.round(props.fixedBodyRows * props.estimatedRowHeight)}px`
+})
+const bodyMaxHeight = computed(() => {
+  if (!props.maxBodyRows || props.maxBodyRows <= 0) {
+    return undefined
+  }
+  return `${Math.round(props.maxBodyRows * props.estimatedRowHeight)}px`
+})
+const wrapperStyle = computed(() => {
+  if (!bodyMaxHeight.value) {
+    return undefined
+  }
+
+  const headerHeight = Math.round(props.estimatedRowHeight)
+  return {
+    maxHeight: `calc(${bodyMaxHeight.value} + ${headerHeight}px)`,
+  }
+})
+const bodyStyle = computed(() => {
+  const style: Record<string, string> = {}
+  if (bodyMinHeight.value) {
+    style.minHeight = bodyMinHeight.value
+  }
+  return Object.keys(style).length ? style : undefined
 })
 
 function getColumnFlex(column: TableColumn) {
@@ -223,6 +248,7 @@ onBeforeUnmount(() => {
     ref="containerRef"
     v-loading="loading"
     class="history-table-v2-wrap"
+    :style="wrapperStyle"
   >
     <div
       class="history-table-v2"
@@ -256,7 +282,7 @@ onBeforeUnmount(() => {
       <div
         v-if="rows.length"
         class="history-table-v2-body"
-        :style="bodyMinHeight ? { minHeight: bodyMinHeight } : undefined"
+        :style="bodyStyle"
       >
         <div
           v-for="(row, rowIndex) in rows"
@@ -316,6 +342,12 @@ onBeforeUnmount(() => {
 .history-table-v2-header,
 .history-table-v2-row {
   display: grid;
+}
+
+.history-table-v2-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .history-table-v2-head-cell,

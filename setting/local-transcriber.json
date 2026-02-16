@@ -1,0 +1,14 @@
+{
+  "engine": "whisper_cli",
+  "command": "env/python.exe",
+  "ffmpegBin": "tools/ffmpeg/bin/ffmpeg.exe",
+  "model": "base",
+  "language": "zh",
+  "device": "cuda",
+  "cudaChecked": true,
+  "cudaAvailable": true,
+  "cudaEnabledOnce": true,
+  "beamSize": 5,
+  "temperature": 0,
+  "timeoutMs": 1800000
+}

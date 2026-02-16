@@ -64,6 +64,8 @@ const videoForm = reactive<VideoUnderstandingConfig>({
 
 const videoPresets = ref<VideoUnderstandingPreset[]>([])
 
+const cudaSwitchable = computed(() => localTranscriber.cudaChecked && localTranscriber.cudaAvailable)
+
 const visibleVideoPresets = computed(() => {
   return PRESET_ORDER
     .map((id) => videoPresets.value.find((preset) => preset.id === id))
@@ -78,6 +80,9 @@ function normalizeLocalTranscriberSelections() {
     localTranscriber.language = 'zh'
   }
   if (!DEVICE_OPTIONS.includes(localTranscriber.device as (typeof DEVICE_OPTIONS)[number])) {
+    localTranscriber.device = 'cpu'
+  }
+  if (localTranscriber.device === 'cuda' && !cudaSwitchable.value) {
     localTranscriber.device = 'cpu'
   }
 }
@@ -213,6 +218,7 @@ async function checkEnv() {
     if (response.data.cuda.ok) {
       ElMessage.success('检测到 CUDA 可用！')
     } else {
+      localTranscriber.device = 'cpu'
       ElMessage.warning('未检测到 CUDA，将使用 CPU 进行转写。')
     }
   } catch (error) {
@@ -378,6 +384,7 @@ onMounted(() => {
               <el-option
                 label="cuda"
                 value="cuda"
+                :disabled="!cudaSwitchable"
               />
             </el-select>
           </div>
@@ -425,7 +432,7 @@ onMounted(() => {
             :class="{ ok: envResults.whisper.ok }"
           >
             <span class="env-label">Whisper:</span>
-            <span class="env-val">{{ envResults.whisper.ok ? envResults.whisper.version : '未找到' }}</span>
+            <span class="env-val">{{ envResults.whisper.version || '未找到' }}</span>
           </div>
           <div
             class="env-item"

@@ -62,7 +62,7 @@ const syncingGpuFromConfig = ref(false)
 const cudaSelectable = computed(() => {
   const config = localTranscriberConfig.value
   if (!config) return false
-  return config.cudaEnabledOnce || config.device === 'cuda'
+  return config.cudaEnabledOnce && config.cudaChecked && config.cudaAvailable
 })
 
 const ALLOWED_FORMATS = new Set<NoteFormat>(['toc', 'screenshot'])

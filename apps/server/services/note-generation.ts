@@ -14,6 +14,7 @@ import { getDiagnosticLogFilePath, logDiagnostic, logDiagnosticError } from './d
 import { readWebPageWithJina } from './jina-reader-client.js';
 import { buildPromptWithOptions, type NoteFormat } from './note-options.js';
 import { replaceScreenshotMarkers } from './screenshot-postprocess.js';
+import { getIntegrations, getModels, getPrompts } from './settings-store/index.js';
 import { createSummaryPipeline, loadSummaryPipelineConfig } from './summary-pipeline.js';
 import { BILIBILI_URL_PATTERN } from '../constants/index.js';
 
@@ -93,7 +94,7 @@ function buildCombinedWebMarkdown(contents: Array<{ url: string; title?: string;
 }
 
 function resolveModel(modelId?: string): ModelConfigRecord | undefined {
-  const models = getAppData().settings.models;
+  const models = getModels();
   if (modelId) {
     const selected = models.find((item) => item.id === modelId);
     if (selected) {
@@ -104,7 +105,7 @@ function resolveModel(modelId?: string): ModelConfigRecord | undefined {
 }
 
 function resolvePrompt(promptId?: string): PromptConfigRecord | undefined {
-  const prompts = getAppData().settings.prompts;
+  const prompts = getPrompts();
   if (promptId) {
     const selected = prompts.find((item) => item.id === promptId);
     if (selected) {
@@ -465,7 +466,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
 
     if (sourceType === 'web') {
       const webContents = new Array<{ url: string; title?: string; content: string }>(totalUrls);
-      const integrations = getAppData().settings.integrations;
+      const integrations = getIntegrations();
 
       let completedCount = 0;
       await mapWithConcurrency(validUrls, linkConcurrency, async (currentUrl, index) => {

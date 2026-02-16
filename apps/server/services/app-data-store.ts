@@ -2,9 +2,6 @@ import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { normalizeJinaReaderEndpoint } from './jina-reader-client.js';
-import { isBundledFfmpegAvailable } from '../utils/ffmpeg-resolver.js';
-
 export type NoteRecord = {
   id: string;
   title: string;
@@ -121,18 +118,13 @@ export type AppData = {
   notes: NoteRecord[];
   drafts: DraftRecord[];
   tasks: TaskRecord[];
-  settings: {
-    models: ModelConfigRecord[];
-    prompts: PromptConfigRecord[];
-    integrations: IntegrationConfigRecord;
-    localTranscriber: LocalTranscriberConfigRecord;
-    videoUnderstanding: VideoUnderstandingConfigRecord;
-  };
 };
 
 const DATA_DIR = path.resolve('data');
-const DATA_FILE = path.join(DATA_DIR, 'app-data.json');
-const SETTINGS_FILE = path.join(DATA_DIR, 'app-settings.json');
+const LEGACY_DATA_FILE = path.join(DATA_DIR, 'app-data.json');
+const NOTES_FILE = path.join(DATA_DIR, 'notes.json');
+const DRAFTS_FILE = path.join(DATA_DIR, 'drafts.json');
+const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
 
 let cache: AppData | null = null;
 
@@ -140,208 +132,11 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function defaultModels(): ModelConfigRecord[] {
-  return [
-    {
-      id: 'gemini',
-      provider: 'gemini',
-      enabled: false,
-      isDefault: true,
-      baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-      apiKey: '',
-      modelName: 'gemini-2.5-flash',
-      timeoutMs: 60000,
-    },
-    {
-      id: 'chatgpt',
-      provider: 'chatgpt',
-      enabled: false,
-      isDefault: false,
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
-      modelName: 'gpt-5-mini',
-      timeoutMs: 60000,
-    },
-    {
-      id: 'openai_compatible',
-      provider: 'openai_compatible',
-      enabled: false,
-      isDefault: false,
-      baseUrl: '',
-      apiKey: '',
-      modelName: '',
-      timeoutMs: 60000,
-    },
-  ];
-}
-
-function normalizeModelRecords(input: unknown): ModelConfigRecord[] {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-
-  const mapped = input
-    .filter((item) => item && typeof item === 'object')
-    .map((item) => item as Partial<ModelConfigRecord>)
-    .filter((item) => typeof item.id === 'string' && typeof item.provider === 'string')
-    .filter((item) => item.provider === 'gemini' || item.provider === 'chatgpt' || item.provider === 'openai_compatible')
-    .map((item) => ({
-      id: (item.id as string).trim(),
-      provider: item.provider as ModelProvider,
-      enabled: Boolean(item.enabled),
-      isDefault: Boolean(item.isDefault),
-      baseUrl: typeof item.baseUrl === 'string' ? item.baseUrl.trim() : undefined,
-      apiKey: typeof item.apiKey === 'string' ? item.apiKey.trim() : undefined,
-      modelName: typeof item.modelName === 'string' ? item.modelName.trim() : '',
-      timeoutMs: typeof item.timeoutMs === 'number' ? item.timeoutMs : undefined,
-    }))
-    .filter((item) => item.id.length > 0);
-
-  if (mapped.length === 0) {
-    return [];
-  }
-
-  const deduped: ModelConfigRecord[] = [];
-  const seen = new Set<string>();
-  for (const item of mapped) {
-    if (seen.has(item.id)) {
-      continue;
-    }
-    seen.add(item.id);
-    deduped.push(item);
-  }
-
-  if (!deduped.some((item) => item.isDefault)) {
-    deduped[0]!.isDefault = true;
-  }
-  return deduped;
-}
-
-function migrateModelBaseUrls(models: ModelConfigRecord[]): ModelConfigRecord[] {
-  return models.map((item) => {
-    if (item.provider === 'gemini') {
-      if (item.baseUrl === 'https://generativelanguage.googleapis.com/v1beta/openai/' || item.baseUrl === 'https://generativelanguage.googleapis.com/v1beta/openai') {
-        return { ...item, baseUrl: 'https://generativelanguage.googleapis.com/v1beta' };
-      }
-      return item;
-    }
-
-    if (item.provider === 'chatgpt') {
-      if (item.baseUrl === 'https://api.openai.com/v1/chat/completions') {
-        return { ...item, baseUrl: 'https://api.openai.com/v1' };
-      }
-      return item;
-    }
-
-    return item;
-  });
-}
-
-function defaultPrompts(): PromptConfigRecord[] {
-  return [];
-}
-
-function defaultIntegrations(): IntegrationConfigRecord {
-  return {
-    jinaReader: {
-      endpoint: normalizeJinaReaderEndpoint(process.env.JINA_READER_ENDPOINT || 'https://r.jina.ai/'),
-      apiKey: process.env.JINA_API_KEY ?? process.env.JINA_READER_API_KEY ?? '',
-      timeoutSec: Number.parseInt(process.env.JINA_READER_TIMEOUT_SEC || '30', 10),
-      noCache: /^(1|true|yes)$/i.test(process.env.JINA_READER_NO_CACHE || ''),
-    },
-  };
-}
-
-function defaultLocalTranscriber(): LocalTranscriberConfigRecord {
-  const bundledFfmpeg = 'tools/ffmpeg/bin/ffmpeg.exe';
-  const hasBundled = isBundledFfmpegAvailable();
-  return {
-    engine: 'whisper_cli',
-    command: process.env.LOCAL_ASR_COMMAND?.trim() || 'python',
-    ffmpegBin: process.env.FFMPEG_BIN?.trim() || (hasBundled ? bundledFfmpeg : 'ffmpeg'),
-    model: process.env.LOCAL_ASR_MODEL?.trim() || 'small',
-    language: process.env.LOCAL_ASR_LANGUAGE?.trim() || 'zh',
-    device: process.env.LOCAL_ASR_DEVICE?.trim() === 'cuda' ? 'cuda' : 'cpu',
-    cudaChecked: false,
-    cudaAvailable: false,
-    cudaEnabledOnce: process.env.LOCAL_ASR_DEVICE?.trim() === 'cuda',
-    beamSize: Number.parseInt(process.env.LOCAL_ASR_BEAM_SIZE || '5', 10),
-    temperature: Number.parseFloat(process.env.LOCAL_ASR_TEMPERATURE || '0'),
-    timeoutMs: Number.parseInt(process.env.LOCAL_ASR_TIMEOUT_MS || '1800000', 10),
-  };
-}
-
-function defaultVideoUnderstanding(): VideoUnderstandingConfigRecord {
-  return {
-    enabled: true,
-    maxFrames: 24,
-    sceneThreshold: 0.3,
-    perSceneMax: 2,
-    minSceneGapSec: 2,
-    dedupeHashDistance: 6,
-    blackFrameLumaThreshold: 18,
-    blurVarianceThreshold: 80,
-    extractWidth: 640,
-    timeoutMs: 120000,
-  };
-}
-
-function withEnvFallback(value: string | undefined, envValue: string | undefined): string {
-  if (value && value.trim()) {
-    return value;
-  }
-  return envValue?.trim() ?? '';
-}
-
-function createDefaultSettings(): AppData['settings'] {
-  return {
-    models: defaultModels(),
-    prompts: defaultPrompts(),
-    integrations: defaultIntegrations(),
-    localTranscriber: defaultLocalTranscriber(),
-    videoUnderstanding: defaultVideoUnderstanding(),
-  };
-}
-
-function createDefaultRuntimeData(): Omit<AppData, 'settings'> {
+function createDefaultRuntimeData(): AppData {
   return {
     notes: [],
     drafts: [],
     tasks: [],
-  };
-}
-
-function normalizeSettings(input: unknown): AppData['settings'] {
-  const parsed = input && typeof input === 'object' ? (input as Partial<AppData['settings']>) : undefined;
-
-  return {
-    models: migrateModelBaseUrls(
-      normalizeModelRecords(Array.isArray(parsed?.models) && parsed.models.length > 0 ? parsed.models : defaultModels())
-    ),
-    prompts: Array.isArray(parsed?.prompts) ? parsed.prompts : defaultPrompts(),
-    integrations: parsed?.integrations
-      ? {
-          jinaReader: {
-            endpoint: normalizeJinaReaderEndpoint(
-              withEnvFallback(parsed.integrations.jinaReader?.endpoint, process.env.JINA_READER_ENDPOINT || 'https://r.jina.ai/')
-            ),
-            apiKey: withEnvFallback(
-              parsed.integrations.jinaReader?.apiKey,
-              process.env.JINA_API_KEY || process.env.JINA_READER_API_KEY
-            ),
-            timeoutSec:
-              typeof parsed.integrations.jinaReader?.timeoutSec === 'number'
-                ? Math.max(3, Math.min(180, Math.floor(parsed.integrations.jinaReader.timeoutSec)))
-                : Number.parseInt(process.env.JINA_READER_TIMEOUT_SEC || '30', 10),
-            noCache:
-              typeof parsed.integrations.jinaReader?.noCache === 'boolean'
-                ? parsed.integrations.jinaReader.noCache
-                : /^(1|true|yes)$/i.test(process.env.JINA_READER_NO_CACHE || ''),
-          },
-        }
-      : defaultIntegrations(),
-    localTranscriber: normalizeLocalTranscriberConfig(parsed?.localTranscriber),
-    videoUnderstanding: normalizeVideoUnderstandingConfig(parsed?.videoUnderstanding),
   };
 }
 
@@ -357,168 +152,87 @@ function readJson(filePath: string): unknown {
   return JSON.parse(raw) as unknown;
 }
 
-function normalizeLocalTranscriberConfig(
-  incoming: Partial<LocalTranscriberConfigRecord> | undefined,
-): LocalTranscriberConfigRecord {
-  const defaults = defaultLocalTranscriber();
-  const env = process.env;
-
-  // Priority: Environment variables > Saved config > Defaults
-  const command = env.LOCAL_ASR_COMMAND?.trim() || incoming?.command || defaults.command;
-  const ffmpegBin = env.FFMPEG_BIN?.trim() || incoming?.ffmpegBin || defaults.ffmpegBin;
-  const model = env.LOCAL_ASR_MODEL?.trim() || incoming?.model || defaults.model;
-  const language = env.LOCAL_ASR_LANGUAGE?.trim() || incoming?.language || defaults.language;
-  const deviceEnv = env.LOCAL_ASR_DEVICE?.trim();
-  const device =
-    deviceEnv === 'cpu' || deviceEnv === 'cuda'
-      ? deviceEnv
-      : incoming?.device === 'cpu' || incoming?.device === 'cuda'
-        ? incoming.device
-        : defaults.device;
-  const beamSize = env.LOCAL_ASR_BEAM_SIZE
-    ? Math.max(1, Math.min(10, Math.floor(Number.parseInt(env.LOCAL_ASR_BEAM_SIZE, 10))))
-    : typeof incoming?.beamSize === 'number'
-      ? Math.max(1, Math.min(10, Math.floor(incoming.beamSize)))
-      : defaults.beamSize;
-  const temperature = env.LOCAL_ASR_TEMPERATURE
-    ? Math.max(0, Math.min(1, Number.parseFloat(env.LOCAL_ASR_TEMPERATURE)))
-    : typeof incoming?.temperature === 'number'
-      ? Math.max(0, Math.min(1, incoming.temperature))
-      : defaults.temperature;
-  const timeoutMs = env.LOCAL_ASR_TIMEOUT_MS
-    ? Math.max(30000, Math.min(1800000, Math.floor(Number.parseInt(env.LOCAL_ASR_TIMEOUT_MS, 10))))
-    : typeof incoming?.timeoutMs === 'number'
-      ? Math.max(30000, Math.min(1800000, Math.floor(incoming.timeoutMs)))
-      : defaults.timeoutMs;
-  const cudaChecked = typeof incoming?.cudaChecked === 'boolean' ? incoming.cudaChecked : defaults.cudaChecked;
-  const cudaAvailable = typeof incoming?.cudaAvailable === 'boolean' ? incoming.cudaAvailable : defaults.cudaAvailable;
-  const cudaEnabledOnce =
-    typeof incoming?.cudaEnabledOnce === 'boolean'
-      ? incoming.cudaEnabledOnce
-      : defaults.cudaEnabledOnce || device === 'cuda';
-
-  return {
-    engine: 'whisper_cli',
-    command,
-    ffmpegBin,
-    model,
-    language,
-    device,
-    cudaChecked,
-    cudaAvailable,
-    cudaEnabledOnce,
-    beamSize,
-    temperature,
-    timeoutMs,
-  };
-}
-
-function normalizeVideoUnderstandingConfig(
-  incoming: Partial<VideoUnderstandingConfigRecord> | undefined,
-): VideoUnderstandingConfigRecord {
-  const defaults = defaultVideoUnderstanding();
-  return {
-    enabled: typeof incoming?.enabled === 'boolean' ? incoming.enabled : defaults.enabled,
-    maxFrames:
-      typeof incoming?.maxFrames === 'number'
-        ? Math.max(4, Math.min(120, Math.floor(incoming.maxFrames)))
-        : defaults.maxFrames,
-    sceneThreshold:
-      typeof incoming?.sceneThreshold === 'number'
-        ? Math.max(0.05, Math.min(0.95, incoming.sceneThreshold))
-        : defaults.sceneThreshold,
-    perSceneMax:
-      typeof incoming?.perSceneMax === 'number'
-        ? Math.max(1, Math.min(3, Math.floor(incoming.perSceneMax)))
-        : defaults.perSceneMax,
-    minSceneGapSec:
-      typeof incoming?.minSceneGapSec === 'number'
-        ? Math.max(0.2, Math.min(30, incoming.minSceneGapSec))
-        : defaults.minSceneGapSec,
-    dedupeHashDistance:
-      typeof incoming?.dedupeHashDistance === 'number'
-        ? Math.max(1, Math.min(64, Math.floor(incoming.dedupeHashDistance)))
-        : defaults.dedupeHashDistance,
-    blackFrameLumaThreshold:
-      typeof incoming?.blackFrameLumaThreshold === 'number'
-        ? Math.max(0, Math.min(255, Math.floor(incoming.blackFrameLumaThreshold)))
-        : defaults.blackFrameLumaThreshold,
-    blurVarianceThreshold:
-      typeof incoming?.blurVarianceThreshold === 'number'
-        ? Math.max(1, Math.min(10000, incoming.blurVarianceThreshold))
-        : defaults.blurVarianceThreshold,
-    extractWidth:
-      typeof incoming?.extractWidth === 'number'
-        ? Math.max(160, Math.min(1920, Math.floor(incoming.extractWidth)))
-        : defaults.extractWidth,
-    timeoutMs:
-      typeof incoming?.timeoutMs === 'number'
-        ? Math.max(15000, Math.min(600000, Math.floor(incoming.timeoutMs)))
-        : defaults.timeoutMs,
-  };
-}
-
 function ensureDataDir(): void {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 }
 
-function readDiskData(): AppData {
-  ensureDataDir();
+function safeReadArray<T>(filePath: string): T[] {
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+  try {
+    const parsed = readJson(filePath);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
 
-  const defaultRuntime = createDefaultRuntimeData();
-  const defaultSettings = createDefaultSettings();
-  let runtimeData: Omit<AppData, 'settings'> = defaultRuntime;
-  let legacySettings: unknown = undefined;
+function ensureArrayFile(filePath: string, fallback: unknown[]): void {
+  if (!fs.existsSync(filePath)) {
+    writeJson(filePath, fallback);
+  }
+}
 
-  if (!fs.existsSync(DATA_FILE)) {
-    writeJson(DATA_FILE, defaultRuntime);
+function migrateLegacyAppDataIfNeeded(): void {
+  const hasSplitFiles = fs.existsSync(NOTES_FILE) || fs.existsSync(DRAFTS_FILE) || fs.existsSync(TASKS_FILE);
+  if (!fs.existsSync(LEGACY_DATA_FILE)) {
+    if (!hasSplitFiles) {
+      const defaults = createDefaultRuntimeData();
+      writeJson(NOTES_FILE, defaults.notes);
+      writeJson(DRAFTS_FILE, defaults.drafts);
+      writeJson(TASKS_FILE, defaults.tasks);
+    }
+    return;
+  }
+
+  let parsed: Partial<AppData> = {};
+  try {
+    const raw = readJson(LEGACY_DATA_FILE) as Partial<AppData> | undefined;
+    parsed = raw && typeof raw === 'object' ? raw : {};
+  } catch {
+    parsed = {};
+  }
+
+  if (!fs.existsSync(NOTES_FILE)) {
+    writeJson(NOTES_FILE, Array.isArray(parsed.notes) ? parsed.notes : []);
+  }
+  if (!fs.existsSync(DRAFTS_FILE)) {
+    writeJson(DRAFTS_FILE, Array.isArray(parsed.drafts) ? parsed.drafts : []);
+  }
+  if (!fs.existsSync(TASKS_FILE)) {
+    writeJson(TASKS_FILE, Array.isArray(parsed.tasks) ? parsed.tasks : []);
   }
 
   try {
-    const parsed = readJson(DATA_FILE) as Partial<AppData> | undefined;
-    if (parsed && typeof parsed === 'object') {
-      runtimeData = {
-        notes: Array.isArray(parsed.notes) ? parsed.notes : [],
-        drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
-        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
-      };
-      legacySettings = parsed.settings;
-    }
+    fs.unlinkSync(LEGACY_DATA_FILE);
   } catch {
-    runtimeData = defaultRuntime;
-    legacySettings = undefined;
-    writeJson(DATA_FILE, defaultRuntime);
+    // ignore
   }
+}
 
-  let settings = defaultSettings;
-  if (!fs.existsSync(SETTINGS_FILE)) {
-    settings = normalizeSettings(legacySettings);
-    writeJson(SETTINGS_FILE, settings);
-  } else {
-    try {
-      settings = normalizeSettings(readJson(SETTINGS_FILE));
-    } catch {
-      settings = normalizeSettings(legacySettings);
-      writeJson(SETTINGS_FILE, settings);
-    }
-  }
+function readDiskData(): AppData {
+  ensureDataDir();
+  migrateLegacyAppDataIfNeeded();
+
+  ensureArrayFile(NOTES_FILE, []);
+  ensureArrayFile(DRAFTS_FILE, []);
+  ensureArrayFile(TASKS_FILE, []);
 
   return {
-    ...runtimeData,
-    settings,
+    notes: safeReadArray<NoteRecord>(NOTES_FILE),
+    drafts: safeReadArray<DraftRecord>(DRAFTS_FILE),
+    tasks: safeReadArray<TaskRecord>(TASKS_FILE),
   };
 }
 
 function persist(data: AppData): void {
   ensureDataDir();
-  writeJson(DATA_FILE, {
-    notes: data.notes,
-    drafts: data.drafts,
-    tasks: data.tasks,
-  });
-  writeJson(SETTINGS_FILE, data.settings);
+  writeJson(NOTES_FILE, data.notes);
+  writeJson(DRAFTS_FILE, data.drafts);
+  writeJson(TASKS_FILE, data.tasks);
 }
 
 export function getAppData(): AppData {
