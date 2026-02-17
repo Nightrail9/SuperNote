@@ -65,6 +65,9 @@ export const api = {
   refineTask(taskId: string) {
     return http.post<{ success: boolean; message: string }>(`/tasks/${taskId}/refine`)
   },
+  deleteTask(taskId: string) {
+    return http.delete<{ success: boolean; message: string }>(`/tasks/${taskId}`)
+  },
   createDraft(payload: { sourceUrl?: string; title?: string; contentMd: string }) {
     return http.post<{ draftId: string; updatedAt: string }>('/drafts', payload)
   },
@@ -149,6 +152,7 @@ export const api = {
     return http.get<{
       ffmpeg: { ok: boolean; version: string; path: string }
       cuda: { ok: boolean; details: string }
+      videoCuda: { ok: boolean; details: string }
       whisper: { ok: boolean; version: string; path: string }
     }>('/settings/env-check')
   },

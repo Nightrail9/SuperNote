@@ -341,11 +341,15 @@ async function refreshActiveTask() {
   try {
     const response = await api.getTask(taskId)
     const status = String(response.data.status ?? '').toLowerCase()
-    if (['success', 'failed', 'cancelled', 'done', 'error', 'timeout'].includes(status)) {
+    if (status !== 'generating' && status !== 'pending') {
       setActiveTaskId('bilibili')
       activeTaskId.value = ''
     }
-  } catch {
+  } catch (error) {
+    if ((error as { code?: string }).code === 'TASK_NOT_FOUND') {
+      setActiveTaskId('bilibili')
+      activeTaskId.value = ''
+    }
     return
   }
 }

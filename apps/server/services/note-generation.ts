@@ -454,6 +454,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
     const keyframeWarnings: string[] = [];
     const keyframeStats: Array<NonNullable<NonNullable<TaskRecord['debug']>['keyframeStats']>[number]> = [];
     const sourceMedias: SourceMedia[] = [];
+    let preferVideoCuda = false;
     const totalUrls = validUrls.length;
     const linkConcurrency = resolveLinkConcurrency(totalUrls);
 
@@ -552,7 +553,9 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
 
       mergedMarkdown = buildCombinedWebMarkdown(normalizedWebContents);
     } else {
-      const pipeline = createSummaryPipeline(loadSummaryPipelineConfig());
+      const pipelineConfig = loadSummaryPipelineConfig();
+      preferVideoCuda = pipelineConfig.localTranscriber.device === 'cuda';
+      const pipeline = createSummaryPipeline(pipelineConfig);
       const sourceMarkdownList = new Array<{ url: string; content: string }>(totalUrls);
 
       let completedCount = 0;
@@ -570,6 +573,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
           signal,
           retainTempFile: useScreenshot,
           enableKeyframes: useScreenshot,
+          preferVideoCuda,
           onProgress: ({ stage, progress, message }) => {
             if (signal.aborted) {
               return;
@@ -685,6 +689,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
           markdown: resultMd,
           videoPath: sourceMedias[0].videoPath,
           taskId,
+          preferCuda: preferVideoCuda,
         });
         resultMd = screenshotResult.markdown;
         if (screenshotResult.warnings.length > 0) {
@@ -1020,4 +1025,26 @@ export function refineGenerateTask(taskId: string): { ok: boolean; message: stri
   })();
 
   return { ok: true, message: '已开始再次整理', task: getTask(taskId) };
+}
+
+export function deleteGenerateTask(taskId: string): { ok: boolean; message: string } {
+  const task = getTask(taskId);
+  if (!task) {
+    return { ok: false, message: '任务不存在' };
+  }
+  if (runningTasks.has(taskId) || task.status === 'generating') {
+    return { ok: false, message: '任务仍在执行中，无法删除' };
+  }
+
+  mutateAppData((data) => {
+    data.tasks = data.tasks.filter((item) => item.id !== taskId);
+  });
+
+  logDiagnostic('info', 'note-generation', 'task_deleted', {
+    taskId,
+    status: task.status,
+    stage: task.stage,
+  });
+
+  return { ok: true, message: '任务已删除' };
 }

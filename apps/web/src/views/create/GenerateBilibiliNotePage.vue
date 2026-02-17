@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Link, Download, Microphone, MagicStick, Timer } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 
-import { readTaskMeta, saveTaskMeta, setActiveTaskId } from './taskMeta'
+import { readTaskMeta, removeTaskMeta, saveTaskMeta, setActiveTaskId } from './taskMeta'
 import { api } from '../../api/modules'
 import PageBlock from '../../components/PageBlock.vue'
 import { buildMarkdownName, downloadMarkdownFile } from '../../utils/markdown'
@@ -29,11 +29,13 @@ const loading = ref(false)
 const polling = ref(false)
 const saveDraftLoading = ref(false)
 const saveNoteLoading = ref(false)
+const deleteResultLoading = ref(false)
 const cancelLoading = ref(false)
 const retryLoading = ref(false)
 const refineLoading = ref(false)
 const autoSaving = ref(false)
 const autoSaveDone = ref(false)
+const skipAutoSaveOnLeave = ref(false)
 const previewOpen = ref(false)
 
 const task = ref<{
@@ -356,6 +358,7 @@ async function saveDraft() {
     }
     markPersisted('draft')
     ElMessage.success('草稿已保存')
+    await router.push('/history/drafts')
   } catch (error) {
     ElMessage.error((error as { message?: string }).message ?? '保存草稿失败')
   } finally {
@@ -382,10 +385,44 @@ async function saveNote() {
     })
     markPersisted('note')
     ElMessage.success('笔记已保存')
+    await router.push('/history/notes')
   } catch (error) {
     ElMessage.error((error as { message?: string }).message ?? '保存笔记失败')
   } finally {
     saveNoteLoading.value = false
+  }
+}
+
+async function handleDeleteResult() {
+  if (!taskId.value || deleteResultLoading.value) {
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm('确认删除该生成结果吗？将同时删除关联草稿和任务记录，且不可恢复。', '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+
+  deleteResultLoading.value = true
+  try {
+    if (draftId.value) {
+      await api.deleteDraft(draftId.value)
+    }
+    await api.deleteTask(taskId.value)
+    removeTaskMeta(taskId.value)
+    setActiveTaskId('bilibili')
+    skipAutoSaveOnLeave.value = true
+    ElMessage.success('生成结果已删除')
+    await router.push('/create/bilibili')
+  } catch (error) {
+    ElMessage.error((error as { message?: string }).message ?? '删除生成结果失败')
+  } finally {
+    deleteResultLoading.value = false
   }
 }
 
@@ -479,6 +516,9 @@ onMounted(async () => {
 })
 
 onBeforeRouteLeave(async () => {
+  if (skipAutoSaveOnLeave.value) {
+    return
+  }
   await tryAutoSaveDraft({ silent: true })
 })
 
@@ -702,6 +742,14 @@ onBeforeUnmount(() => {
                 @click="saveNote"
               >
                 保存为笔记
+              </el-button>
+              <el-button
+                type="danger"
+                plain
+                :loading="deleteResultLoading"
+                @click="handleDeleteResult"
+              >
+                删除结果
               </el-button>
             </div>
             <el-alert

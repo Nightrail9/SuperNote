@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 import { getAppData } from '../services/app-data-store.js';
-import { cancelGenerateTask, refineGenerateTask, retryGenerateTask } from '../services/note-generation.js';
+import { cancelGenerateTask, deleteGenerateTask, refineGenerateTask, retryGenerateTask } from '../services/note-generation.js';
 import { sendApiError, toErrorMessage } from '../utils/http-error.js';
 import type { Request, Response } from 'express';
 
@@ -83,6 +83,20 @@ export function createTasksRouter(): Router {
       res.json({ success: true, message: result.message });
     } catch (error) {
       sendApiError(res, 500, 'REFINE_TASK_FAILED', toErrorMessage(error, '再次整理任务失败'));
+    }
+  });
+
+  router.delete('/tasks/:taskId', async (req: Request, res: Response) => {
+    try {
+      const taskId = String(req.params.taskId ?? '');
+      const result = deleteGenerateTask(taskId);
+      if (!result.ok) {
+        sendApiError(res, 409, 'TASK_DELETE_FAILED', result.message);
+        return;
+      }
+      res.json({ success: true, message: result.message });
+    } catch (error) {
+      sendApiError(res, 500, 'DELETE_TASK_FAILED', toErrorMessage(error, '删除任务失败'));
     }
   });
 
