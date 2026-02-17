@@ -4,7 +4,8 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getActiveTaskId, readCreatePreferences, saveCreatePreferences, saveTaskMeta, setActiveTaskId } from './taskMeta'
+import { readCreatePreferences, saveCreatePreferences, saveTaskMeta, setActiveTaskId } from './taskMeta'
+import { useCreateActiveTask } from './useCreateActiveTask'
 import { useTaskConfigOptions } from './useTaskConfigOptions'
 import { api } from '../../api/modules'
 import type { LocalTranscriberConfig, NoteFormat } from '../../types/domain'
@@ -39,7 +40,7 @@ const selectedPromptId = ref<string | undefined>(undefined)
 const selectedFormats = ref<NoteFormat[]>([])
 
 const generating = ref(false)
-const activeTaskId = ref('')
+const { activeTaskId, refreshActiveTask } = useCreateActiveTask('bilibili', (taskId) => `/create/bilibili/generate/${taskId}`)
 
 const {
   modelsLoading,
@@ -245,12 +246,14 @@ function buildPreviewItems(entries: SourceEntry[]): PreviewItem[] {
 function handleWindowFocus() {
   void refreshTaskConfigOptions()
   void loadLocalTranscriberConfig()
+  void refreshActiveTask()
 }
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible') {
     void refreshTaskConfigOptions()
     void loadLocalTranscriberConfig()
+    void refreshActiveTask()
   }
 }
 
@@ -331,28 +334,6 @@ async function handleGenerate() {
 
 const generateButtonType = computed(() => (activeTaskId.value ? 'warning' : 'primary'))
 const generateButtonLabel = computed(() => (activeTaskId.value ? '生成中' : '生成笔记'))
-
-async function refreshActiveTask() {
-  const taskId = getActiveTaskId('bilibili')
-  activeTaskId.value = taskId ?? ''
-  if (!taskId) {
-    return
-  }
-  try {
-    const response = await api.getTask(taskId)
-    const status = String(response.data.status ?? '').toLowerCase()
-    if (status !== 'generating' && status !== 'pending') {
-      setActiveTaskId('bilibili')
-      activeTaskId.value = ''
-    }
-  } catch (error) {
-    if ((error as { code?: string }).code === 'TASK_NOT_FOUND') {
-      setActiveTaskId('bilibili')
-      activeTaskId.value = ''
-    }
-    return
-  }
-}
 
 onMounted(() => {
   restoreCreatePreferences()

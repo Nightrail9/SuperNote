@@ -4,7 +4,8 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getActiveTaskId, readCreatePreferences, saveCreatePreferences, saveTaskMeta, setActiveTaskId } from './taskMeta'
+import { readCreatePreferences, saveCreatePreferences, saveTaskMeta, setActiveTaskId } from './taskMeta'
+import { useCreateActiveTask } from './useCreateActiveTask'
 import { useTaskConfigOptions } from './useTaskConfigOptions'
 import { api } from '../../api/modules'
 import type { NoteFormat } from '../../types/domain'
@@ -78,7 +79,7 @@ function normalizeSourceText(text: string) {
 const router = useRouter()
 const sourceText = ref('')
 const urlError = ref('')
-const activeTaskId = ref('')
+const { activeTaskId, refreshActiveTask } = useCreateActiveTask('web', (taskId) => `/create/web/generate/${taskId}`)
 const selectedPromptId = ref<string | undefined>(undefined)
 const includeToc = ref(false)
 
@@ -139,11 +140,13 @@ watch(includeToc, () => {
 
 function handleWindowFocus() {
   void refreshTaskConfigOptions()
+  void refreshActiveTask()
 }
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible') {
     void refreshTaskConfigOptions()
+    void refreshActiveTask()
   }
 }
 
@@ -214,28 +217,6 @@ async function handleGenerate() {
 
 const generateButtonType = computed(() => (activeTaskId.value ? 'warning' : 'primary'))
 const generateButtonLabel = computed(() => (activeTaskId.value ? '生成中' : '生成笔记'))
-
-async function refreshActiveTask() {
-  const taskId = getActiveTaskId('web')
-  activeTaskId.value = taskId ?? ''
-  if (!taskId) {
-    return
-  }
-  try {
-    const response = await api.getTask(taskId)
-    const status = String(response.data.status ?? '').toLowerCase()
-    if (status !== 'generating' && status !== 'pending') {
-      setActiveTaskId('web')
-      activeTaskId.value = ''
-    }
-  } catch (error) {
-    if ((error as { code?: string }).code === 'TASK_NOT_FOUND') {
-      setActiveTaskId('web')
-      activeTaskId.value = ''
-    }
-    return
-  }
-}
 
 onMounted(() => {
   restoreCreatePreferences()
