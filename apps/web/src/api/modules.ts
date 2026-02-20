@@ -1,6 +1,8 @@
 import { http } from './http'
 import type {
   Draft,
+  GeneratedResultItem,
+  GenerationMode,
   IntegrationConfig,
   LocalTranscriberConfig,
   NoteFormat,
@@ -22,9 +24,17 @@ export const api = {
     promptId?: string,
     modelId?: string,
     sourceType: 'bilibili' | 'web' = 'bilibili',
-    formats?: NoteFormat[]
+    formats?: NoteFormat[],
+    generationMode: GenerationMode = 'merge_all'
   ) {
-    return http.post<{ taskId: string }>('/notes/generate', { sourceUrl, promptId, modelId, sourceType, formats })
+    return http.post<{ taskId: string }>('/notes/generate', {
+      sourceUrl,
+      promptId,
+      modelId,
+      sourceType,
+      formats,
+      generationMode,
+    })
   },
   getTask(taskId: string) {
     return http.get<{
@@ -35,7 +45,9 @@ export const api = {
       retryable?: boolean
       resolvedTitle?: string
       sourceType?: 'bilibili' | 'web'
+      generationMode?: GenerationMode
       formats?: NoteFormat[]
+      resultItems?: GeneratedResultItem[]
       resultMd?: string
       createdAt?: string
       updatedAt?: string
@@ -66,7 +78,9 @@ export const api = {
     return http.post<{ success: boolean; message: string }>(`/tasks/${taskId}/refine`)
   },
   deleteTask(taskId: string) {
-    return http.delete<{ success: boolean; message: string }>(`/tasks/${taskId}`)
+    return http
+      .post<{ success: boolean; message: string }>(`/tasks/${taskId}/delete`)
+      .catch(() => http.delete<{ success: boolean; message: string }>(`/tasks/${taskId}`))
   },
   createDraft(payload: { sourceUrl?: string; title?: string; contentMd: string }) {
     return http.post<{ draftId: string; updatedAt: string }>('/drafts', payload)

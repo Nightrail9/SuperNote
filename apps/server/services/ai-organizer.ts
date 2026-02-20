@@ -10,6 +10,8 @@
 import { logDiagnostic, logDiagnosticError } from './diagnostic-logger.js';
 import { getErrorMessage } from '../utils/error-messages.js';
 import { normalizeBaseUrl, isGeminiNativeUrl } from '../utils/url-helpers.js';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Configuration for an AI organize request.
@@ -29,7 +31,14 @@ export interface AIOrganizeConfig {
   timeoutMs?: number;
   /** External abort signal (optional) */
   abortSignal?: AbortSignal;
+  /** Optional image file paths for multimodal models */
+  imagePaths?: string[];
 }
+
+type InlineImage = {
+  mimeType: string;
+  base64Data: string;
+};
 
 /**
  * Result of an AI organize operation.
@@ -101,6 +110,23 @@ function resolveModelName(provider: string, modelName?: string): string {
 }
 
 function buildOpenAIPayload(markdown: string, config: AIOrganizeConfig, modelName: string): Record<string, unknown> {
+  const images = loadInlineImages(config.imagePaths);
+  const userContent =
+    images.length > 0
+      ? [
+          {
+            type: 'text',
+            text: markdown,
+          },
+          ...images.map((item) => ({
+            type: 'image_url',
+            image_url: {
+              url: `data:${item.mimeType};base64,${item.base64Data}`,
+            },
+          })),
+        ]
+      : markdown;
+
   return {
     model: modelName,
     messages: [
@@ -110,7 +136,7 @@ function buildOpenAIPayload(markdown: string, config: AIOrganizeConfig, modelNam
       },
       {
         role: 'user',
-        content: markdown,
+        content: userContent,
       },
     ],
     temperature: 0.2,
@@ -118,18 +144,79 @@ function buildOpenAIPayload(markdown: string, config: AIOrganizeConfig, modelNam
 }
 
 function buildGeminiNativePayload(markdown: string, config: AIOrganizeConfig): Record<string, unknown> {
+  const images = loadInlineImages(config.imagePaths);
+  const parts: Array<Record<string, unknown>> = [
+    {
+      text: `${config.prompt}\n\n${markdown}`,
+    },
+  ];
+
+  for (const image of images) {
+    parts.push({
+      inline_data: {
+        mime_type: image.mimeType,
+        data: image.base64Data,
+      },
+    });
+  }
+
   return {
     contents: [
       {
         role: 'user',
-        parts: [
-          {
-            text: `${config.prompt}\n\n${markdown}`,
-          },
-        ],
+        parts,
       },
     ],
   };
+}
+
+function detectImageMimeType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.png') {
+    return 'image/png';
+  }
+  if (ext === '.webp') {
+    return 'image/webp';
+  }
+  return 'image/jpeg';
+}
+
+function loadInlineImages(imagePaths: string[] | undefined): InlineImage[] {
+  if (!Array.isArray(imagePaths) || imagePaths.length === 0) {
+    return [];
+  }
+
+  const images: InlineImage[] = [];
+  for (const imagePath of imagePaths) {
+    if (typeof imagePath !== 'string' || !imagePath.trim()) {
+      continue;
+    }
+    const normalizedPath = imagePath.trim();
+    if (!fs.existsSync(normalizedPath)) {
+      continue;
+    }
+    const binary = fs.readFileSync(normalizedPath);
+    if (!binary.length) {
+      continue;
+    }
+    images.push({
+      mimeType: detectImageMimeType(normalizedPath),
+      base64Data: binary.toString('base64'),
+    });
+  }
+  return images;
+}
+
+function maybeMultimodalUnsupported(message: string): boolean {
+  const text = message.toLowerCase();
+  return (
+    (text.includes('image') && text.includes('support')) ||
+    text.includes('vision') ||
+    text.includes('multimodal') ||
+    text.includes('does not support image') ||
+    text.includes('input_image') ||
+    text.includes('inline_data')
+  );
 }
 
 /**
@@ -190,6 +277,27 @@ export function extractContent(responseBody: Record<string, unknown>): string {
         const text = (message as Record<string, unknown>).content;
         if (typeof text === 'string') {
           return text;
+        }
+        if (Array.isArray(text)) {
+          const merged = text
+            .map((item) => {
+              if (!item || typeof item !== 'object') {
+                return '';
+              }
+              const record = item as Record<string, unknown>;
+              if (typeof record.text === 'string') {
+                return record.text;
+              }
+              if (typeof record.output_text === 'string') {
+                return record.output_text;
+              }
+              return '';
+            })
+            .filter(Boolean)
+            .join('\n');
+          if (merged) {
+            return merged;
+          }
         }
       }
       const text = firstRecord.text;
@@ -306,9 +414,16 @@ export class DefaultAIOrganizer implements AIOrganizer {
         const parsedBody = this.tryParseJson(rawBody);
 
         if (!response.ok) {
-          const errorCode = mapHttpStatusToErrorCode(response.status);
+          let errorCode = mapHttpStatusToErrorCode(response.status);
           const fallbackMessage = getErrorMessage(errorCode).message;
-          const errorMessage = this.resolveApiErrorMessage(parsedBody, fallbackMessage);
+          let errorMessage = this.resolveApiErrorMessage(parsedBody, fallbackMessage);
+          if (
+            config.imagePaths?.length &&
+            (maybeMultimodalUnsupported(errorMessage) || response.status === 400 || response.status === 422)
+          ) {
+            errorCode = 'UNSUPPORTED_MULTIMODAL';
+            errorMessage = '当前模型不支持图片输入，请更换支持视觉的模型后重试。';
+          }
           logDiagnostic('warn', 'ai-organizer', 'request_failed_http', {
             provider,
             modelName,

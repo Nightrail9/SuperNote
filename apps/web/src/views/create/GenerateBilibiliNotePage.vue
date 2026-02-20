@@ -44,7 +44,13 @@ const task = ref<{
   progress?: number
   message?: string
   retryable?: boolean
+  generationMode?: 'merge_all' | 'per_link'
   resolvedTitle?: string
+  resultItems?: Array<{
+    sourceUrl: string
+    resolvedTitle?: string
+    resultMd: string
+  }>
   resultMd?: string
   debug?: {
     keyframeWarnings?: string[]
@@ -69,6 +75,8 @@ function resolveTitle(md: string) {
 }
 
 const normalizedStatus = computed(() => (task.value?.status ?? 'generating').toLowerCase())
+const isPerLinkMode = computed(() => task.value?.generationMode === 'per_link')
+const resultItems = computed(() => task.value?.resultItems ?? [])
 const taskStatus = computed<'generating' | 'success' | 'failed' | 'cancelled'>(() => {
   if (cancelledTaskStates.has(normalizedStatus.value)) return 'cancelled'
   if (failedTaskStates.has(normalizedStatus.value)) return 'failed'
@@ -76,10 +84,23 @@ const taskStatus = computed<'generating' | 'success' | 'failed' | 'cancelled'>((
   return 'generating'
 })
 
-const markdown = computed(() => (taskStatus.value === 'success' ? (task.value?.resultMd ?? '') : ''))
+const markdown = computed(() => {
+  if (taskStatus.value !== 'success' || isPerLinkMode.value) {
+    return ''
+  }
+  return task.value?.resultMd ?? ''
+})
 const taskError = computed(() => task.value?.error ?? '任务执行失败，请稍后重试')
 const finalTitle = computed(() => noteTitle.value.trim() || resolveTitle(markdown.value))
-const canOperate = computed(() => taskStatus.value === 'success' && markdown.value.trim().length > 0)
+const canOperate = computed(() => {
+  if (taskStatus.value !== 'success') {
+    return false
+  }
+  if (isPerLinkMode.value) {
+    return resultItems.value.length > 0
+  }
+  return markdown.value.trim().length > 0
+})
 const canCancel = computed(() => taskStatus.value === 'generating' && !cancelLoading.value)
 const canRetry = computed(() => taskStatus.value === 'failed' && Boolean(task.value?.retryable) && !retryLoading.value)
 const canRefine = computed(() => canOperate.value && !refineLoading.value)
@@ -178,6 +199,21 @@ const totalDurationLabel = computed(() => {
   return formatDuration(ended - created)
 })
 const durationDisplay = computed(() => totalDurationLabel.value || '—')
+
+function resolveResultItemTitle(item: { resolvedTitle?: string; resultMd: string }, index: number) {
+  const fallback = `笔记 ${index + 1}`
+  if (item.resolvedTitle?.trim()) {
+    return item.resolvedTitle.trim()
+  }
+  const firstHeading = item.resultMd
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.startsWith('# '))
+  if (!firstHeading) {
+    return fallback
+  }
+  return firstHeading.replace(/^#\s+/, '').trim() || fallback
+}
 
 function formatDuration(durationMs: number): string {
   const totalSeconds = Math.max(1, Math.floor(durationMs / 1000))
@@ -487,7 +523,95 @@ function handleDownload() {
     ElMessage.warning('任务完成后可下载')
     return
   }
+  if (isPerLinkMode.value) {
+    resultItems.value.forEach((item, index) => {
+      downloadMarkdownFile(item.resultMd, buildMarkdownName(resolveResultItemTitle(item, index)))
+    })
+    ElMessage.success(`已下载 ${resultItems.value.length} 个 Markdown 文件`)
+    return
+  }
   downloadMarkdownFile(markdown.value, buildMarkdownName(finalTitle.value))
+}
+
+const saveAllNotesLoading = ref(false)
+const saveAllDraftsLoading = ref(false)
+
+async function saveAllDrafts() {
+  if (!isPerLinkMode.value || !resultItems.value.length) {
+    return
+  }
+  saveAllDraftsLoading.value = true
+  try {
+    let successCount = 0
+    let failedCount = 0
+    for (let index = 0; index < resultItems.value.length; index += 1) {
+      const item = resultItems.value[index]
+      if (!item) {
+        failedCount += 1
+        continue
+      }
+      try {
+        await api.createDraft({
+          sourceUrl: item.sourceUrl,
+          title: resolveResultItemTitle(item, index),
+          contentMd: item.resultMd,
+        })
+        successCount += 1
+      } catch {
+        failedCount += 1
+      }
+    }
+    if (successCount > 0) {
+      markPersisted('draft')
+    }
+    if (failedCount > 0) {
+      ElMessage.warning(`已保存 ${successCount} 篇草稿，失败 ${failedCount} 篇`)
+    } else {
+      ElMessage.success(`已保存 ${successCount} 篇草稿`)
+      await router.push('/history/drafts')
+    }
+  } finally {
+    saveAllDraftsLoading.value = false
+  }
+}
+
+async function saveAllNotes() {
+  if (!isPerLinkMode.value || !resultItems.value.length) {
+    return
+  }
+  saveAllNotesLoading.value = true
+  try {
+    let successCount = 0
+    let failedCount = 0
+    for (let index = 0; index < resultItems.value.length; index += 1) {
+      const item = resultItems.value[index]
+      if (!item) {
+        failedCount += 1
+        continue
+      }
+      try {
+        await api.createNote({
+          title: resolveResultItemTitle(item, index),
+          sourceUrl: item.sourceUrl,
+          contentMd: item.resultMd,
+        })
+        successCount += 1
+      } catch {
+        failedCount += 1
+      }
+    }
+    if (successCount > 0) {
+      markPersisted('note')
+    }
+    if (failedCount > 0) {
+      ElMessage.warning(`已保存 ${successCount} 篇，失败 ${failedCount} 篇`)
+    } else {
+      ElMessage.success(`已保存 ${successCount} 篇笔记`)
+      await router.push('/history/notes')
+    }
+  } finally {
+    saveAllNotesLoading.value = false
+  }
 }
 
 function openPreview() {
@@ -675,7 +799,103 @@ onBeforeUnmount(() => {
           :title="`关键帧阶段出现 ${keyframeWarningCount} 条降级告警，已自动回退并继续生成`"
         />
 
-        <div class="result-finish-shell">
+        <div
+          v-if="isPerLinkMode"
+          class="result-finish-shell"
+        >
+          <el-card
+            shadow="never"
+            class="result-complete-card"
+          >
+            <div class="result-complete-main">
+              <div class="result-complete-head">
+                <el-tag
+                  effect="dark"
+                  type="success"
+                  size="small"
+                >
+                  完成
+                </el-tag>
+                <el-text type="info">
+                  已按链接独立生成，共 {{ resultItems.length }} 篇笔记
+                </el-text>
+              </div>
+              <el-text
+                tag="strong"
+                size="large"
+              >
+                可逐条下载，或一键批量保存为草稿/笔记
+              </el-text>
+            </div>
+          </el-card>
+          <div class="result-action-panel">
+            <div class="result-core-actions">
+              <el-button @click="handleDownload">
+                下载全部 .md
+              </el-button>
+                <el-button
+                  :loading="saveAllDraftsLoading"
+                  @click="saveAllDrafts"
+                >
+                  全部保存为草稿
+                </el-button>
+                <el-button
+                  type="primary"
+                  :loading="saveAllNotesLoading"
+                  @click="saveAllNotes"
+                >
+                  全部保存为笔记
+              </el-button>
+              <el-button
+                type="danger"
+                plain
+                :loading="deleteResultLoading"
+                @click="handleDeleteResult"
+              >
+                删除结果
+              </el-button>
+            </div>
+          </div>
+          <el-card
+            v-for="(item, index) in resultItems"
+            :key="`${item.sourceUrl}-${index}`"
+            shadow="never"
+            class="result-action-panel"
+          >
+            <div class="result-action-head">
+              <div class="result-action-head-copy">
+                <el-text tag="strong">
+                  {{ index + 1 }}. {{ resolveResultItemTitle(item, index) }}
+                </el-text>
+                <el-text
+                  size="small"
+                  type="info"
+                >
+                  {{ item.sourceUrl }}
+                </el-text>
+              </div>
+            </div>
+            <div class="result-core-actions">
+              <el-button
+                @click="downloadMarkdownFile(item.resultMd, buildMarkdownName(resolveResultItemTitle(item, index)))"
+              >
+                下载此篇
+              </el-button>
+            </div>
+          </el-card>
+          <div class="result-duration-note">
+            <el-icon class="result-duration-icon">
+              <Timer />
+            </el-icon>
+            <span class="result-duration-label">本次生成总花费时长：</span>
+            <strong class="result-duration-value">{{ durationDisplay }}</strong>
+          </div>
+        </div>
+
+        <div
+          v-else
+          class="result-finish-shell"
+        >
           <el-card
             shadow="never"
             class="result-complete-card"
@@ -769,6 +989,7 @@ onBeforeUnmount(() => {
         </div>
 
         <el-dialog
+          v-if="!isPerLinkMode"
           v-model="previewOpen"
           title="生成结果预览"
           width="72%"

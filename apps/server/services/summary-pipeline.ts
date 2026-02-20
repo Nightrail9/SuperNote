@@ -6,6 +6,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 import { loadConfig } from '../config.js';
 import { DefaultAIOrganizer, type AIOrganizer } from './ai-organizer.js';
@@ -29,6 +31,20 @@ import {
 } from './pipeline-utils.js';
 import { getLocalTranscriber, getVideoUnderstanding } from './settings-store/index.js';
 import { getErrorMessage } from '../utils/http-error.js';
+import { resolveFfprobeBin } from '../utils/ffmpeg-resolver.js';
+
+const execFileAsync = promisify(execFile);
+const MAX_KEYFRAME_TIMEOUT_MS = 600000;
+
+function resolveKeyframeTimeoutMs(baseTimeoutMs: number, durationSec: number): number {
+  const normalizedBase = Math.max(15000, Math.min(MAX_KEYFRAME_TIMEOUT_MS, Math.floor(baseTimeoutMs)));
+  if (!Number.isFinite(durationSec) || durationSec <= 0) {
+    return normalizedBase;
+  }
+  const extraChunks = Math.max(0, Math.floor(durationSec / 600));
+  const dynamic = normalizedBase + extraChunks * 30000;
+  return Math.max(normalizedBase, Math.min(MAX_KEYFRAME_TIMEOUT_MS, dynamic));
+}
 
 /** 流水线配置 */
 export interface SummaryPipelineConfig {
@@ -84,6 +100,13 @@ export interface SummaryExecuteOptions {
   signal?: AbortSignal;
   retainTempFile?: boolean;
   enableKeyframes?: boolean;
+  forceKeyframes?: boolean;
+  preserveArtifacts?: boolean;
+  taskTempDir?: string;
+  videoOutputDir?: string;
+  keyframeOutputDir?: string;
+  asrOutputDir?: string;
+  preferVideoCuda?: boolean;
 }
 
 /** 可注入依赖（测试用） */
@@ -130,6 +153,32 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
     }
   }
 
+  private async probeVideoDurationSec(videoPath: string, signal?: AbortSignal): Promise<number | null> {
+    const ffprobeBin = resolveFfprobeBin();
+    try {
+      const { stdout } = await execFileAsync(
+        ffprobeBin,
+        [
+          '-v',
+          'error',
+          '-show_entries',
+          'format=duration',
+          '-of',
+          'default=nokey=1:noprint_wrappers=1',
+          videoPath,
+        ],
+        { signal },
+      );
+      const value = Number.parseFloat(String(stdout).trim());
+      if (!Number.isFinite(value) || value <= 0) {
+        return null;
+      }
+      return value;
+    } catch {
+      return null;
+    }
+  }
+
   /** 执行整条流水线 */
   async execute(url: string, aiConfig?: AIConfig, options?: SummaryExecuteOptions): Promise<SummaryResult> {
     let tempFilePath: string | null = null;
@@ -162,7 +211,8 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
       }
 
       // 阶段 2：下载视频
-      tempFilePath = generateTempFilePath(this.config.tempDir, 1);
+      const resolvedVideoDir = options?.videoOutputDir?.trim() || options?.taskTempDir?.trim() || this.config.tempDir;
+      tempFilePath = generateTempFilePath(resolvedVideoDir, 1);
       options?.onProgress?.({ stage: 'download', progress: 0.18, message: '正在下载视频源文件' });
       try {
         // 确保临时目录存在
@@ -185,13 +235,24 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
         return this.createError('download', 'DOWNLOAD_FAILED', message);
       }
 
-      const shouldRunKeyframes = this.config.videoUnderstanding.enabled && (options?.enableKeyframes ?? true);
+      const shouldRunKeyframes =
+        (options?.forceKeyframes ? true : this.config.videoUnderstanding.enabled) && (options?.enableKeyframes ?? true);
       if (shouldRunKeyframes) {
         options?.onProgress?.({ stage: 'extract_frames', progress: 0.38, message: '正在进行关键帧提取' });
         try {
-          const keyframeResult = await this.runWithTimeout(
-            this.keyframeSelector.select(tempFilePath, this.config.videoUnderstanding, { signal: options?.signal }),
+          const durationSec = await this.probeVideoDurationSec(tempFilePath, options?.signal);
+          const keyframeTimeoutMs = resolveKeyframeTimeoutMs(
             this.config.videoUnderstanding.timeoutMs,
+            durationSec ?? Number.NaN,
+          );
+          const keyframeResult = await this.runWithTimeout(
+            this.keyframeSelector.select(tempFilePath, this.config.videoUnderstanding, {
+              signal: options?.signal,
+              preferCuda: options?.preferVideoCuda ?? this.config.localTranscriber.device === 'cuda',
+              outputDir: options?.keyframeOutputDir,
+              preserveArtifacts: options?.preserveArtifacts,
+            }),
+            keyframeTimeoutMs,
             'keyframe stage timeout',
           );
           if (options?.signal?.aborted) {
@@ -217,7 +278,11 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
       options?.onProgress?.({ stage: 'local_transcribe', progress: 0.68, message: '正在执行本地转写' });
       try {
         const transcript = await this.runWithTimeout(
-          this.localTranscriber.transcribe(tempFilePath, this.config.localTranscriber, { signal: options?.signal }),
+          this.localTranscriber.transcribe(tempFilePath, this.config.localTranscriber, {
+            signal: options?.signal,
+            workDir: options?.asrOutputDir,
+            preserveArtifacts: options?.preserveArtifacts,
+          }),
           this.config.localTranscriber.timeoutMs,
           'local transcribe timeout',
         );
@@ -313,8 +378,8 @@ export class DefaultSummaryPipeline implements SummaryPipeline {
         videoFilePath: retainedVideoFilePath,
       };
     } finally {
-      // 任意失败都要清理临时文件
-      if (tempFilePath) {
+      // 默认清理临时文件；preserveArtifacts 开启时由上层统一清理
+      if (tempFilePath && !options?.preserveArtifacts) {
         logDiagnostic('info', 'summary-pipeline', 'cleanup_temp_file', {
           url,
           tempFilePath,

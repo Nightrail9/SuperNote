@@ -42,6 +42,14 @@ export type PromptConfig = {
 
 export type NoteFormat = 'toc' | 'screenshot'
 
+export type GenerationMode = 'merge_all' | 'per_link'
+
+export type GeneratedResultItem = {
+  sourceUrl: string
+  resolvedTitle?: string
+  resultMd: string
+}
+
 export type IntegrationConfig = {
   jinaReader: {
     endpoint?: string

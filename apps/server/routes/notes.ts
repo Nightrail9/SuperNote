@@ -27,9 +27,10 @@ export function createNotesRouter(): Router {
       const promptId = typeof req.body?.promptId === 'string' ? req.body.promptId : undefined;
       const modelId = typeof req.body?.modelId === 'string' ? req.body.modelId : undefined;
       const sourceType = req.body?.sourceType === 'web' ? 'web' : 'bilibili';
+      const generationMode = req.body?.generationMode === 'per_link' ? 'per_link' : 'merge_all';
       const formats = normalizeNoteFormats(req.body?.formats);
 
-      const task = startGenerateTask({ sourceUrl, promptId, modelId, sourceType, formats });
+      const task = startGenerateTask({ sourceUrl, promptId, modelId, sourceType, generationMode, formats });
       res.json({ taskId: task.id });
     } catch (error) {
       sendApiError(res, 500, 'GENERATE_TASK_FAILED', toErrorMessage(error, '创建生成任务失败'));

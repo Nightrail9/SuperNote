@@ -23,20 +23,6 @@ import type { Request, Response } from 'express';
 
 const execFileAsync = promisify(execFile);
 
-function toWhisperCheckMessage(error: unknown): string {
-  const message = toErrorMessage(error, 'faster-whisper 检测失败');
-  if (/timed out|timeout/i.test(message)) {
-    return '检测超时（可能首次加载较慢），请重试';
-  }
-  if (/No module named ['"]faster_whisper['"]/i.test(message)) {
-    return '未安装 faster-whisper';
-  }
-  if (/enoent|not recognized as an internal or external command|is not recognized|找不到指定的文件/i.test(message)) {
-    return '未找到 Python 可执行文件';
-  }
-  return `检测失败：${message.slice(0, 140)}`;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -299,53 +285,30 @@ export function createSettingsRouter(): Router {
     const results = {
       ffmpeg: { ok: false, version: '', path: '' },
       cuda: { ok: false, details: '' },
+      videoCuda: { ok: false, details: '' },
       whisper: { ok: false, version: '', path: '' },
     };
 
     const config = getLocalTranscriber();
 
-    // Check FFmpeg
-    const ffmpegBinRaw = config.ffmpegBin || 'ffmpeg';
-    const ffmpegBin = resolveProjectPath(ffmpegBinRaw);
-    try {
-      const { stdout } = await execFileAsync(ffmpegBin, ['-version'], { timeout: 3000 });
-      results.ffmpeg.ok = true;
-      results.ffmpeg.version = stdout.split('\n')[0].trim();
-      results.ffmpeg.path = ffmpegBinRaw; // 显示原始路径（可能是相对的）
-    } catch {
-      results.ffmpeg.ok = false;
-    }
+    // Fixed setup mode: only detect CUDA.
+    // FFmpeg/Whisper use saved configuration and are not actively probed here.
+    results.ffmpeg.path = config.ffmpegBin || '';
 
-    // Check Whisper (now checking Python + faster-whisper)
-    // For now, we assume if python is available and can import faster_whisper, it is OK.
     let pythonBin = 'python';
-    // If config.command looks like a python executable (contains 'python'), use it.
     if (config.command && config.command.toLowerCase().includes('python')) {
       pythonBin = resolveCommand(config.command);
     }
-    // Ensure we have an absolute path for local env/python.exe
+
     if (!path.isAbsolute(pythonBin) && (pythonBin.includes('env/') || pythonBin.includes('env\\'))) {
-       const projectRoot = getProjectRoot();
-       const candidate = path.join(projectRoot, pythonBin.replace(/^\.\//, ''));
-       if (fs.existsSync(candidate)) {
-         pythonBin = candidate;
-       }
+      const projectRoot = getProjectRoot();
+      const candidate = path.join(projectRoot, pythonBin.replace(/^\.\//, ''));
+      if (fs.existsSync(candidate)) {
+        pythonBin = candidate;
+      }
     }
 
-    try {
-      const { stdout } = await execFileAsync(
-        pythonBin,
-        ['-c', 'import faster_whisper; print(faster_whisper.__version__)'],
-        { timeout: 10000 },
-      );
-      results.whisper.ok = true;
-      results.whisper.version = String(stdout).trim() || 'faster-whisper installed';
-      results.whisper.path = pythonBin;
-    } catch (error) {
-      results.whisper.ok = false;
-      results.whisper.version = toWhisperCheckMessage(error);
-      results.whisper.path = pythonBin;
-    }
+    results.whisper.path = pythonBin;
 
     // Check CUDA (prefer ctranslate2 used by faster-whisper; fallback to torch)
     try {

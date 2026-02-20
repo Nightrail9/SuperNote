@@ -8,6 +8,60 @@ import { resolveFfmpegBin, resolveFfprobeBin } from '../utils/ffmpeg-resolver.js
 import { getErrorMessage } from '../utils/http-error.js';
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_KEYFRAME_CANDIDATE_CONCURRENCY = 3;
+const MAX_KEYFRAME_CANDIDATE_CONCURRENCY = 8;
+
+function resolveCandidateConcurrency(): number {
+  const raw = Number.parseInt(process.env.KEYFRAME_CANDIDATE_CONCURRENCY || '', 10);
+  const configured = Number.isFinite(raw) ? raw : DEFAULT_KEYFRAME_CANDIDATE_CONCURRENCY;
+  return Math.max(1, Math.min(MAX_KEYFRAME_CANDIDATE_CONCURRENCY, Math.floor(configured)));
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  let firstError: unknown;
+
+  const worker = async (): Promise<void> => {
+    while (true) {
+      if (firstError) {
+        return;
+      }
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      if (currentIndex >= items.length) {
+        return;
+      }
+      const current = items[currentIndex];
+      if (current === undefined) {
+        continue;
+      }
+      try {
+        results[currentIndex] = await mapper(current, currentIndex);
+      } catch (error) {
+        firstError = error;
+        return;
+      }
+    }
+  };
+
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  if (firstError) {
+    throw firstError;
+  }
+
+  return results;
+}
 
 type SceneRange = {
   startSec: number;
@@ -119,7 +173,7 @@ export interface KeyframeSelector {
   select(
     videoPath: string,
     config: VideoUnderstandingConfigRecord,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; preferCuda?: boolean; outputDir?: string; preserveArtifacts?: boolean },
   ): Promise<KeyframeSelectionResult>;
 }
 
@@ -135,13 +189,13 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
   async select(
     videoPath: string,
     config: VideoUnderstandingConfigRecord,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; preferCuda?: boolean; outputDir?: string; preserveArtifacts?: boolean },
   ): Promise<KeyframeSelectionResult> {
     const startedAt = Date.now();
     const warnings: string[] = [];
     const fallbackStats = this.createEmptyStats(Date.now() - startedAt);
 
-    const tempDir = path.join(path.dirname(videoPath), `frames_${createId('tmp')}`);
+    const tempDir = options?.outputDir?.trim() || path.join(path.dirname(videoPath), `frames_${createId('tmp')}`);
     fs.mkdirSync(tempDir, { recursive: true });
 
     try {
@@ -154,6 +208,7 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
         videoPath,
         adaptiveConfig.sceneThreshold,
         adaptiveConfig.minSceneGapSec,
+        Boolean(options?.preferCuda),
         options?.signal,
       );
       const scenes = this.buildScenes(durationSec, sceneBoundaries, adaptiveConfig.minSceneGapSec);
@@ -161,7 +216,14 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
         warnings.push('KEYFRAME_WARN_SCENE_EMPTY_FALLBACK_UNIFORM');
       }
 
-      const candidates = await this.collectSceneCandidates(videoPath, scenes, adaptiveConfig, tempDir, options?.signal);
+      const candidates = await this.collectSceneCandidates(
+        videoPath,
+        scenes,
+        adaptiveConfig,
+        tempDir,
+        Boolean(options?.preferCuda),
+        options?.signal,
+      );
       const candidateCount = candidates.length;
 
       const afterBlack = candidates.filter((item) => item.lumaMean >= adaptiveConfig.blackFrameLumaThreshold);
@@ -204,7 +266,7 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
       };
     } finally {
       try {
-        if (fs.existsSync(tempDir)) {
+        if (!options?.preserveArtifacts && fs.existsSync(tempDir)) {
           fs.rmSync(tempDir, { recursive: true, force: true });
         }
       } catch {
@@ -246,10 +308,11 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
     videoPath: string,
     sceneThreshold: number,
     minSceneGapSec: number,
+    preferCuda: boolean,
     signal?: AbortSignal,
   ): Promise<number[]> {
     const filter = `select='gt(scene,${sceneThreshold.toFixed(3)})',showinfo`;
-    const { stderr } = await execFileAsync(this.ffmpegBin, [
+    const { stderr } = await this.execFfmpegWithCudaFallback([
       '-hide_banner',
       '-v',
       'info',
@@ -262,9 +325,9 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
       '-f',
       'null',
       '-',
-    ], { signal });
+    ], preferCuda, { signal });
 
-    const matches = Array.from(stderr.matchAll(/pts_time:([0-9]+(?:\.[0-9]+)?)/g));
+    const matches = Array.from(String(stderr).matchAll(/pts_time:([0-9]+(?:\.[0-9]+)?)/g));
     const rawTimes = matches
       .map((item) => Number.parseFloat(item[1] ?? 'NaN'))
       .filter((item) => Number.isFinite(item) && item >= 0)
@@ -317,20 +380,24 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
     scenes: SceneRange[],
     config: VideoUnderstandingConfigRecord,
     tempDir: string,
+    preferCuda: boolean,
     signal?: AbortSignal,
   ): Promise<InternalCandidate[]> {
     const all: InternalCandidate[] = [];
+    const candidateConcurrency = resolveCandidateConcurrency();
 
     for (const scene of scenes) {
       const timestamps = this.generateSceneTimestamps(scene, config.perSceneMax);
-      const perScene: InternalCandidate[] = [];
-
-      for (const timestampSec of timestamps) {
-        const imagePath = path.join(tempDir, `f_${Math.round(timestampSec * 1000)}.jpg`);
-        await this.extractFrame(videoPath, timestampSec, imagePath, config.extractWidth, signal);
-        const metrics = await this.computeMetrics(imagePath, signal);
-        perScene.push({ timestampSec, imagePath, ...metrics });
-      }
+      const perScene = await mapWithConcurrency(
+        timestamps,
+        Math.min(candidateConcurrency, timestamps.length),
+        async (timestampSec) => {
+          const imagePath = path.join(tempDir, `f_${Math.round(timestampSec * 1000)}.png`);
+          await this.extractFrame(videoPath, timestampSec, imagePath, config.extractWidth, preferCuda, signal);
+          const metrics = await this.computeMetrics(imagePath, signal);
+          return { timestampSec, imagePath, ...metrics };
+        },
+      );
 
       perScene.sort((a, b) => this.rankScore(b) - this.rankScore(a));
       all.push(...perScene.slice(0, config.perSceneMax));
@@ -344,11 +411,16 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
     const duration = Math.max(scene.endSec - scene.startSec, 0.5);
     const mid = scene.startSec + duration / 2;
     if (perSceneMax <= 1) {
-      return [mid];
+      return [Number.parseFloat(mid.toFixed(3))];
     }
-    const p10 = scene.startSec + duration * 0.15;
+    if (perSceneMax === 2) {
+      const p20 = scene.startSec + duration * 0.2;
+      const p80 = scene.startSec + duration * 0.8;
+      return [Number.parseFloat(p20.toFixed(3)), Number.parseFloat(p80.toFixed(3))];
+    }
+    const p15 = scene.startSec + duration * 0.15;
     const p85 = scene.startSec + duration * 0.85;
-    return Array.from(new Set([mid, p10, p85].map((item) => Number.parseFloat(item.toFixed(3)))));
+    return Array.from(new Set([mid, p15, p85].map((item) => Number.parseFloat(item.toFixed(3)))));
   }
 
   private async extractFrame(
@@ -356,9 +428,10 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
     timestampSec: number,
     outputPath: string,
     width: number,
+    preferCuda: boolean,
     signal?: AbortSignal,
   ): Promise<void> {
-    await execFileAsync(this.ffmpegBin, [
+    await this.execFfmpegWithCudaFallback([
       '-hide_banner',
       '-loglevel',
       'error',
@@ -369,10 +442,26 @@ export class DefaultKeyframeSelector implements KeyframeSelector {
       '-frames:v',
       '1',
       '-vf',
-      `scale=${width}:-2`,
+      `scale=${width}:-2:flags=lanczos,format=rgb24`,
       '-y',
       outputPath,
-    ], { signal });
+    ], preferCuda, { signal });
+  }
+
+  private async execFfmpegWithCudaFallback(
+    args: string[],
+    preferCuda: boolean,
+    options?: Parameters<typeof execFileAsync>[2],
+  ): Promise<{ stdout: string | Buffer; stderr: string | Buffer }> {
+    if (!preferCuda) {
+      return await execFileAsync(this.ffmpegBin, args, options);
+    }
+
+    try {
+      return await execFileAsync(this.ffmpegBin, ['-hwaccel', 'cuda', ...args], options);
+    } catch {
+      return await execFileAsync(this.ffmpegBin, args, options);
+    }
   }
 
   private async computeMetrics(imagePath: string, signal?: AbortSignal): Promise<FrameMetrics> {

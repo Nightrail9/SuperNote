@@ -1,5 +1,6 @@
 export type GenerateTaskMeta = {
   sourceType?: 'bilibili' | 'web'
+  generationMode?: 'merge_all' | 'per_link'
   sourceText?: string
   sourceUrlFirstValid?: string
   draftId?: string
@@ -16,6 +17,7 @@ export type CreatePreferences = {
   promptId?: string
   formats?: string[]
   includeToc?: boolean
+  generationMode?: 'merge_all' | 'per_link'
 }
 
 function taskMetaKey(taskId: string) {
@@ -164,6 +166,9 @@ export function readCreatePreferences(sourceType: SourceType): CreatePreferences
     }
     if (typeof data.includeToc === 'boolean') {
       preferences.includeToc = data.includeToc
+    }
+    if (data.generationMode === 'per_link' || data.generationMode === 'merge_all') {
+      preferences.generationMode = data.generationMode
     }
 
     return preferences

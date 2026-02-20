@@ -16,6 +16,7 @@ const checkingEnv = ref(false)
 const envResults = ref<{
   ffmpeg: { ok: boolean; version: string; path: string }
   cuda: { ok: boolean; details: string }
+  videoCuda: { ok: boolean; details: string }
   whisper: { ok: boolean; version: string; path: string }
 } | null>(null)
 const activePresetId = ref('medium_balanced')
@@ -186,7 +187,7 @@ async function testLocalTranscriber() {
 
 async function saveLocalTranscriber() {
   if (localTranscriber.device === 'cuda' && !localTranscriber.cudaChecked) {
-    ElMessage.warning('请先点击“检测环境 (CUDA/FFmpeg)”完成 CUDA 检测，再保存 CUDA 配置')
+    ElMessage.warning('请先点击“检测 CUDA”完成检测，再保存 CUDA 配置')
     return
   }
   if (localTranscriber.device === 'cuda' && !localTranscriber.cudaAvailable) {
@@ -422,20 +423,6 @@ onMounted(() => {
         >
           <div
             class="env-item"
-            :class="{ ok: envResults.ffmpeg.ok }"
-          >
-            <span class="env-label">FFmpeg:</span>
-            <span class="env-val">{{ envResults.ffmpeg.ok ? envResults.ffmpeg.version : '未找到' }}</span>
-          </div>
-          <div
-            class="env-item"
-            :class="{ ok: envResults.whisper.ok }"
-          >
-            <span class="env-label">Whisper:</span>
-            <span class="env-val">{{ envResults.whisper.version || '未找到' }}</span>
-          </div>
-          <div
-            class="env-item"
             :class="{ ok: envResults.cuda.ok }"
           >
             <span class="env-label">CUDA 加速:</span>
@@ -448,7 +435,7 @@ onMounted(() => {
             :loading="checkingEnv"
             @click="checkEnv"
           >
-            检测环境 (CUDA/FFmpeg)
+            检测 CUDA
           </el-button>
           <el-button
             plain

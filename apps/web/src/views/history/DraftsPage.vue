@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { DRAFT_TABLE_COLUMNS, HISTORY_FIXED_BODY_ROWS, HISTORY_PAGE_SIZE, resolveSourceLabel } from './table-config'
 import { api } from '../../api/modules'
+import FullscreenToggleButton from '../../components/history/FullscreenToggleButton.vue'
 import HistoryResizableTable from '../../components/history/HistoryResizableTable.vue'
 import PageBlock from '../../components/PageBlock.vue'
 import type { Draft } from '../../types/domain'
@@ -24,10 +25,12 @@ const items = ref<Draft[]>([])
 const total = ref(0)
 const searchInput = ref('')
 const previewOpen = ref(false)
+const previewFullscreen = ref(false)
 const activeDraft = ref<Draft | null>(null)
 const activePreviewIndex = ref(-1)
 const previewLoading = ref(false)
 const editingOpen = ref(false)
+const editFullscreen = ref(false)
 const activeEditDraftId = ref<string | null>(null)
 const activeEditIndex = ref(-1)
 const editLoading = ref(false)
@@ -117,6 +120,7 @@ async function previewNext() {
 
 function closePreview() {
   previewOpen.value = false
+  previewFullscreen.value = false
   activePreviewIndex.value = -1
   activeDraft.value = null
 }
@@ -158,6 +162,7 @@ async function editNext() {
 
 function closeEdit() {
   editingOpen.value = false
+  editFullscreen.value = false
   activeEditDraftId.value = null
   activeEditIndex.value = -1
   editTitle.value = ''
@@ -321,6 +326,7 @@ onMounted(() => {
       v-model="previewOpen"
       :title="activeDraft?.title || '草稿预览'"
       width="72%"
+      :fullscreen="previewFullscreen"
       align-center
       append-to-body
       class="history-preview-dialog"
@@ -340,6 +346,7 @@ onMounted(() => {
             第 {{ activePreviewIndex + 1 }} / {{ filteredItems.length }} 条
           </el-text>
           <div class="history-preview-nav">
+            <FullscreenToggleButton v-model="previewFullscreen" />
             <el-button
               :disabled="!canPreviewPrev || previewLoading"
               @click="previewPrev"
@@ -364,6 +371,7 @@ onMounted(() => {
         <div
           v-loading="previewLoading"
           class="history-preview-body"
+          :class="{ 'history-preview-body-fullscreen': previewFullscreen }"
         >
           <MarkdownPreview
             v-if="previewOpen || previewLoading"
@@ -377,6 +385,7 @@ onMounted(() => {
       v-model="editingOpen"
       title="编辑草稿"
       width="72%"
+      :fullscreen="editFullscreen"
       align-center
       append-to-body
       class="history-preview-dialog history-edit-dialog"
@@ -392,6 +401,7 @@ onMounted(() => {
           第 {{ activeEditIndex + 1 }} / {{ filteredItems.length }} 条
         </el-text>
         <div class="history-preview-nav">
+          <FullscreenToggleButton v-model="editFullscreen" />
           <el-button
             :disabled="!canEditPrev || editLoading || saveLoading"
             @click="editPrev"
@@ -419,7 +429,7 @@ onMounted(() => {
         <MarkdownEditor
           v-if="editingOpen || editLoading"
           :value="editMarkdown"
-          :height="460"
+          :height="editFullscreen ? 760 : 460"
           @change="(next) => (editMarkdown = next)"
         />
       </el-space>
@@ -466,6 +476,10 @@ onMounted(() => {
   min-height: 460px;
   max-height: 62vh;
   overflow: auto;
+}
+
+.history-preview-body-fullscreen {
+  max-height: calc(100vh - 210px);
 }
 
 </style>

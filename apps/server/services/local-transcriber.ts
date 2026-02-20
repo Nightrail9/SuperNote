@@ -25,7 +25,7 @@ export interface LocalTranscriber {
   transcribe(
     videoPath: string,
     config: LocalTranscriberConfigRecord,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; workDir?: string; preserveArtifacts?: boolean },
   ): Promise<TranscriptResult>;
 }
 
@@ -59,9 +59,9 @@ export class WhisperCliTranscriber implements LocalTranscriber {
   async transcribe(
     videoPath: string,
     config: LocalTranscriberConfigRecord,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; workDir?: string; preserveArtifacts?: boolean },
   ): Promise<TranscriptResult> {
-    const workDir = path.join(path.dirname(videoPath), `asr_${createId('tmp')}`);
+    const workDir = options?.workDir?.trim() || path.join(path.dirname(videoPath), `asr_${createId('tmp')}`);
     fs.mkdirSync(workDir, { recursive: true });
     const audioPath = path.join(workDir, 'audio.wav');
 
@@ -74,7 +74,7 @@ export class WhisperCliTranscriber implements LocalTranscriber {
       }
       return result;
     } finally {
-      if (fs.existsSync(workDir)) {
+      if (!options?.preserveArtifacts && fs.existsSync(workDir)) {
         fs.rmSync(workDir, { recursive: true, force: true });
       }
     }

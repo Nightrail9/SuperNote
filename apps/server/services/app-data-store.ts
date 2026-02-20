@@ -89,9 +89,15 @@ export type TaskRecord = {
   sourceUrl: string;
   resolvedTitle?: string;
   sourceType?: 'bilibili' | 'web';
+  generationMode?: 'merge_all' | 'per_link';
   promptId?: string;
   modelId?: string;
   formats?: string[];
+  resultItems?: Array<{
+    sourceUrl: string;
+    resolvedTitle?: string;
+    resultMd: string;
+  }>;
   resultMd?: string;
   preparedMd?: string;
   retryable?: boolean;
@@ -108,6 +114,8 @@ export type TaskRecord = {
       elapsedMs: number;
     }>;
     keyframeWarnings?: string[];
+    visionImagePaths?: string[];
+    tempDir?: string;
   };
   error?: string;
   createdAt: string;

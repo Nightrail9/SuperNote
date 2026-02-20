@@ -8,7 +8,7 @@ import { readCreatePreferences, saveCreatePreferences, saveTaskMeta, setActiveTa
 import { useCreateActiveTask } from './useCreateActiveTask'
 import { useTaskConfigOptions } from './useTaskConfigOptions'
 import { api } from '../../api/modules'
-import type { LocalTranscriberConfig, NoteFormat } from '../../types/domain'
+import type { GenerationMode, LocalTranscriberConfig, NoteFormat } from '../../types/domain'
 
 type CreateLocationState = {
   draft?: {
@@ -38,6 +38,7 @@ const sourceText = ref(initialDraft?.sourceUrl ?? '')
 const urlError = ref('')
 const selectedPromptId = ref<string | undefined>(undefined)
 const selectedFormats = ref<NoteFormat[]>([])
+const generationMode = ref<GenerationMode>('merge_all')
 
 const generating = ref(false)
 const { activeTaskId, refreshActiveTask } = useCreateActiveTask('bilibili', (taskId) => `/create/bilibili/generate/${taskId}`)
@@ -72,6 +73,7 @@ function persistCreatePreferences() {
   saveCreatePreferences('bilibili', {
     promptId: selectedPromptId.value,
     formats: selectedFormats.value,
+    generationMode: generationMode.value,
   })
 }
 
@@ -85,6 +87,9 @@ function restoreCreatePreferences() {
   }
   if (Array.isArray(stored.formats)) {
     selectedFormats.value = stored.formats.filter((item): item is NoteFormat => ALLOWED_FORMATS.has(item as NoteFormat))
+  }
+  if (stored.generationMode === 'per_link' || stored.generationMode === 'merge_all') {
+    generationMode.value = stored.generationMode
   }
 }
 
@@ -139,6 +144,10 @@ function handleCudaCheckboxClick() {
 }
 
 watch(selectedPromptId, () => {
+  persistCreatePreferences()
+})
+
+watch(generationMode, () => {
   persistCreatePreferences()
 })
 
@@ -306,7 +315,8 @@ async function handleGenerate() {
       selectedPromptId.value ?? defaultPromptId.value,
       defaultModelId.value,
       'bilibili',
-      formatsWithGpu as NoteFormat[]
+      formatsWithGpu as NoteFormat[],
+      generationMode.value
     )
     const firstValid = normalizedPreview.find((item) => item.valid)
     saveTaskMeta(result.data.taskId, {
@@ -318,6 +328,7 @@ async function handleGenerate() {
       modelId: defaultModelId.value,
       promptId: selectedPromptId.value ?? defaultPromptId.value,
       formats: formatsWithGpu as NoteFormat[],
+      generationMode: generationMode.value,
     })
     setActiveTaskId('bilibili', result.data.taskId)
     activeTaskId.value = result.data.taskId
@@ -397,6 +408,22 @@ onBeforeUnmount(() => {
         >
           将按系统配置默认项生成；若无可用模型，请先前往系统配置 > 模型配置启用模型
         </el-text>
+        <div class="note-generate-action">
+          <el-button
+            :type="generateButtonType"
+            size="large"
+            :loading="generating"
+            @click="handleGenerate"
+          >
+            <el-icon
+              v-if="activeTaskId"
+              class="generate-status-icon is-rotating"
+            >
+              <Loading />
+            </el-icon>
+            {{ generateButtonLabel }}
+          </el-button>
+        </div>
       </el-card>
 
       <el-card
@@ -470,6 +497,34 @@ onBeforeUnmount(() => {
           <div class="create-option-row">
             <div class="option-title-row">
               <el-text tag="strong">
+                多链接输出方式
+              </el-text>
+              <el-tag
+                size="small"
+                effect="plain"
+                type="info"
+              >
+                结果策略
+              </el-tag>
+            </div>
+            <el-radio-group v-model="generationMode">
+              <el-radio value="merge_all">
+                合并成一个笔记
+              </el-radio>
+              <el-radio value="per_link">
+                每条链接独立输出
+              </el-radio>
+            </el-radio-group>
+            <el-text
+              size="small"
+              type="info"
+            >
+              合并模式会统一整理；独立模式会为每条链接分别生成结果
+            </el-text>
+          </div>
+          <div class="create-option-row">
+            <div class="option-title-row">
+              <el-text tag="strong">
                 硬件加速
               </el-text>
               <el-tag
@@ -501,29 +556,6 @@ onBeforeUnmount(() => {
             </el-text>
           </div>
         </div>
-        <div class="note-generate-action">
-          <el-button
-            :type="generateButtonType"
-            size="large"
-            :loading="generating"
-            @click="handleGenerate"
-          >
-            <el-icon
-              v-if="activeTaskId"
-              class="generate-status-icon is-rotating"
-            >
-              <Loading />
-            </el-icon>
-            {{ generateButtonLabel }}
-          </el-button>
-          <el-text
-            size="small"
-            type="info"
-            class="generate-hint"
-          >
-            建议：长视频勾选"目录"；教程类内容可搭配"原片截图"
-          </el-text>
-        </div>
       </el-card>
     </div>
 
@@ -537,7 +569,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .create-workspace--bili {
-  grid-template-columns: minmax(0, 1.85fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(0, 1.85fr) minmax(352px, 1.045fr);
 }
 
 .note-preference-card {
@@ -549,14 +581,18 @@ onBeforeUnmount(() => {
 
 .note-preference-card :deep(.el-card__body) {
   padding: 18px;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   max-height: 100%;
+  height: 100%;
 }
 
 .note-options-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
+  width: 100%;
 }
 
 .create-option-row {
@@ -625,22 +661,15 @@ onBeforeUnmount(() => {
 }
 
 .note-generate-action {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-soft);
+  margin-top: 12px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .note-generate-action :deep(.el-button--primary) {
   min-width: 168px;
   font-weight: 600;
-}
-
-.note-generate-action .generate-hint {
-  margin-top: 8px;
-  text-align: center;
 }
 
 .generate-status-icon {

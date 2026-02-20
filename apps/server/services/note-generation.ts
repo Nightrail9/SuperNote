@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 
 import { DefaultAIOrganizer } from './ai-organizer.js';
 import {
@@ -23,7 +24,16 @@ type GenerationOptions = {
   promptId?: string;
   modelId?: string;
   sourceType?: 'bilibili' | 'web';
+  generationMode?: 'merge_all' | 'per_link';
   formats?: NoteFormat[];
+};
+
+type GenerationMode = 'merge_all' | 'per_link';
+
+type GeneratedResultItem = {
+  sourceUrl: string;
+  resolvedTitle?: string;
+  resultMd: string;
 };
 
 type RunningTaskContext = {
@@ -34,6 +44,8 @@ type RunningTaskContext = {
 const runningTasks = new Map<string, RunningTaskContext>();
 const DEFAULT_LINK_CONCURRENCY = 2;
 const MAX_LINK_CONCURRENCY = 4;
+const TASK_TEMP_ROOT = path.resolve('data', 'temp', 'tasks');
+const FAILED_TEMP_TTL_MS = 24 * 60 * 60 * 1000;
 
 class TaskFailureError extends Error {
   patch: Partial<TaskRecord>;
@@ -78,6 +90,10 @@ function inferSourceType(options: GenerationOptions): 'bilibili' | 'web' {
   return options.sourceType === 'web' ? 'web' : 'bilibili';
 }
 
+function resolveGenerationMode(options: GenerationOptions): GenerationMode {
+  return options.generationMode === 'per_link' ? 'per_link' : 'merge_all';
+}
+
 function buildCombinedMarkdown(markdowns: Array<{ url: string; content: string }>): string {
   const blocks = markdowns.map((item, index) => {
     return [`## 来源 ${index + 1}`, '', `原始链接：${item.url}`, '', item.content.trim(), ''].join('\n');
@@ -91,6 +107,28 @@ function buildCombinedWebMarkdown(contents: Array<{ url: string; title?: string;
     return [`## 网页来源 ${index + 1}`, '', `原始链接：${item.url}`, titleLine, '', item.content.trim(), ''].join('\n');
   });
   return ['# 网页抓取内容汇总', '', ...blocks].join('\n').trim();
+}
+
+function buildPerLinkResultMarkdown(items: GeneratedResultItem[]): string {
+  return items
+    .map((item, index) => {
+      const title = item.resolvedTitle?.trim() || `笔记 ${index + 1}`;
+      return [`# ${title}`, '', `来源链接：${item.sourceUrl}`, '', item.resultMd.trim()].join('\n');
+    })
+    .join('\n\n---\n\n')
+    .trim();
+}
+
+function resolveMarkdownTitle(markdown: string): string | undefined {
+  const firstHeading = markdown
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.startsWith('# '));
+  if (!firstHeading) {
+    return undefined;
+  }
+  const title = firstHeading.replace(/^#\s+/, '').trim();
+  return title || undefined;
 }
 
 function resolveModel(modelId?: string): ModelConfigRecord | undefined {
@@ -187,18 +225,185 @@ function unregisterRunningTask(taskId: string): void {
 type SourceMedia = {
   url: string;
   videoPath: string;
+  keyframes: Array<{ timestampSec: number; imagePath?: string }>;
+  framesDir?: string;
 };
 
-function cleanupRetainedFiles(paths: string[]): void {
-  for (const filePath of paths) {
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-    } catch {
+const MAX_VISION_IMAGES = 6;
+
+function toMmSsMarker(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds));
+  const mm = String(Math.floor(safe / 60)).padStart(2, '0');
+  const ss = String(safe % 60).padStart(2, '0');
+  return `*Screenshot-[${mm}:${ss}]`;
+}
+
+function ensureDirectory(dirPath: string): void {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function getTaskTempDir(taskId: string): string {
+  return path.join(TASK_TEMP_ROOT, taskId);
+}
+
+function removeDirectory(dirPath: string): void {
+  try {
+    if (fs.existsSync(dirPath)) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+  } catch {
+    // ignore cleanup errors
+  }
+}
+
+function cleanupExpiredFailedTaskTempDirs(nowMs: number = Date.now()): void {
+  ensureDirectory(TASK_TEMP_ROOT);
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(TASK_TEMP_ROOT, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  const tasks = getAppData().tasks;
+  const failedTaskMap = new Map(
+    tasks
+      .filter((item) => item.status === 'failed')
+      .map((item) => [item.id, Date.parse(item.updatedAt)]),
+  );
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
       continue;
     }
+    const taskId = entry.name;
+    const failedUpdatedAt = failedTaskMap.get(taskId);
+    if (!Number.isFinite(failedUpdatedAt)) {
+      continue;
+    }
+    if (nowMs - (failedUpdatedAt as number) < FAILED_TEMP_TTL_MS) {
+      continue;
+    }
+    removeDirectory(path.join(TASK_TEMP_ROOT, taskId));
   }
+}
+
+function pickFrames(
+  keyframes: Array<{ timestampSec: number; imagePath?: string }>,
+  maxCount: number,
+): Array<{ timestampSec: number; imagePath?: string }> {
+  if (!keyframes.length || maxCount <= 0) {
+    return [];
+  }
+  const ordered = [...keyframes]
+    .filter((item) => Number.isFinite(item.timestampSec) && item.timestampSec >= 0)
+    .sort((a, b) => a.timestampSec - b.timestampSec);
+  if (!ordered.length) {
+    return [];
+  }
+  if (ordered.length <= maxCount) {
+    return ordered;
+  }
+  const picked: Array<{ timestampSec: number; imagePath?: string }> = [];
+  for (let index = 0; index < maxCount; index++) {
+    const position = Math.floor((index * (ordered.length - 1)) / Math.max(maxCount - 1, 1));
+    const item = ordered[position];
+    if (item) {
+      picked.push(item);
+    }
+  }
+  return picked;
+}
+
+function staticUrlToPublicPath(staticUrl: string): string {
+  const relative = staticUrl.replace(/^\/+static\//, '');
+  return path.resolve('data', 'public', relative);
+}
+
+function extractScreenshotPaths(markdown: string): string[] {
+  const matches = Array.from(markdown.matchAll(/!\[\]\((\/static\/[^)]+)\)/g));
+  return matches
+    .map((item) => item[1] ?? '')
+    .filter(Boolean)
+    .map((item) => staticUrlToPublicPath(item));
+}
+
+async function prepareVisionImagePaths(
+  taskId: string,
+  sourceMedias: SourceMedia[],
+  preferCuda: boolean,
+  keyframeWarnings: string[],
+): Promise<string[]> {
+  if (sourceMedias.length === 0) {
+    return [];
+  }
+
+  const imagePaths: string[] = [];
+  const perSourceQuota = Math.max(1, Math.ceil(MAX_VISION_IMAGES / sourceMedias.length));
+  for (let index = 0; index < sourceMedias.length; index++) {
+    if (imagePaths.length >= MAX_VISION_IMAGES) {
+      break;
+    }
+    const source = sourceMedias[index];
+    if (!source) {
+      continue;
+    }
+    const remaining = MAX_VISION_IMAGES - imagePaths.length;
+    const selectedFrames = pickFrames(source.keyframes, Math.min(perSourceQuota, remaining));
+    if (selectedFrames.length === 0) {
+      const fallbackFiles = source.framesDir && fs.existsSync(source.framesDir)
+        ? fs
+            .readdirSync(source.framesDir)
+            .filter((name) => /\.(?:jpe?g|png)$/i.test(name))
+            .sort()
+            .map((name) => path.join(source.framesDir as string, name))
+        : [];
+      if (fallbackFiles.length > 0) {
+        const fallbackPicked = pickFrames(
+          fallbackFiles.map((filePath) => ({ timestampSec: 0, imagePath: filePath })),
+          Math.min(perSourceQuota, remaining),
+        )
+          .map((item) => item.imagePath)
+          .filter((item): item is string => typeof item === 'string' && item.length > 0)
+          .filter((item) => fs.existsSync(item));
+        if (fallbackPicked.length > 0) {
+          imagePaths.push(...fallbackPicked);
+          keyframeWarnings.push(`第 ${index + 1} 条链接关键帧统计为空，已回退使用目录中的已生成截图。`);
+          continue;
+        }
+      }
+
+      keyframeWarnings.push(`第 ${index + 1} 条链接未提取到可用关键帧，无法用于图像理解。`);
+      continue;
+    }
+
+    const existingPaths = selectedFrames
+      .map((item) => item.imagePath)
+      .filter((item): item is string => typeof item === 'string' && item.length > 0)
+      .filter((item) => fs.existsSync(item));
+
+    if (existingPaths.length > 0) {
+      imagePaths.push(...existingPaths);
+      continue;
+    }
+
+    const markers = selectedFrames.map((item) => toMmSsMarker(item.timestampSec));
+    const screenshotResult = await replaceScreenshotMarkers({
+      markdown: markers.join('\n'),
+      videoPath: source.videoPath,
+      taskId: `${taskId}_vision_${index + 1}`,
+      preferCuda,
+    });
+    if (screenshotResult.warnings.length > 0) {
+      keyframeWarnings.push(...screenshotResult.warnings.map((item) => `图像理解截图提取失败（${index + 1}）：${item}`));
+    }
+    const paths = extractScreenshotPaths(screenshotResult.markdown).filter((item) => fs.existsSync(item));
+    imagePaths.push(...paths);
+  }
+
+  return Array.from(new Set(imagePaths)).slice(0, MAX_VISION_IMAGES);
 }
 
 function resolveLinkConcurrency(totalUrls: number): number {
@@ -276,6 +481,8 @@ async function runAiStage(
   signal: AbortSignal,
   keyframeWarnings: string[],
   keyframeStats: Array<NonNullable<NonNullable<TaskRecord['debug']>['keyframeStats']>[number]>,
+  visionImagePaths: string[],
+  tempDir?: string,
 ): Promise<{ success: boolean; resultMd?: string }> {
   const resolvedTimeoutMs = resolveAiTimeoutMs(model.timeoutMs, mergedMarkdown.length, effectivePrompt.length);
   throwIfCancelled(taskId, signal);
@@ -300,6 +507,7 @@ async function runAiStage(
     timeoutMs: resolvedTimeoutMs,
     mergedMarkdownLength: mergedMarkdown.length,
     promptLength: effectivePrompt.length,
+    visionImageCount: visionImagePaths.length,
   });
 
   const aiOrganizer = new DefaultAIOrganizer();
@@ -311,6 +519,7 @@ async function runAiStage(
     prompt: effectivePrompt,
     timeoutMs: resolvedTimeoutMs,
     abortSignal: signal,
+    imagePaths: visionImagePaths,
   });
 
   throwIfCancelled(taskId, signal);
@@ -335,6 +544,8 @@ async function runAiStage(
       debug: {
         keyframeStats,
         keyframeWarnings,
+        visionImagePaths,
+        tempDir,
       },
     });
     return { success: false };
@@ -371,14 +582,22 @@ function resolveAiTimeoutMs(
 async function runTask(taskId: string, options: GenerationOptions): Promise<void> {
   const controller = registerRunningTask(taskId);
   const signal = controller.signal;
-  const retainedVideoFiles: string[] = [];
+  const taskTempDir = getTaskTempDir(taskId);
+  const taskVideoDir = path.join(taskTempDir, 'video');
+  const taskFramesDir = path.join(taskTempDir, 'frames');
+  const taskAsrDir = path.join(taskTempDir, 'asr');
+  ensureDirectory(taskVideoDir);
+  ensureDirectory(taskFramesDir);
+  ensureDirectory(taskAsrDir);
   try {
     const sourceType = inferSourceType(options);
+    const generationMode = resolveGenerationMode(options);
     const selectedFormats = options.formats ?? [];
     const useScreenshot = selectedFormats.includes('screenshot');
     logDiagnostic('info', 'note-generation', 'task_started', {
       taskId,
       sourceType,
+      generationMode,
       sourceUrl: options.sourceUrl,
       modelId: options.modelId,
       promptId: options.promptId,
@@ -389,6 +608,12 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       stage: 'validate',
       progress: 8,
       message: '正在校验链接与任务配置',
+    });
+    updateTask(taskId, {
+      generationMode,
+      debug: {
+        tempDir: taskTempDir,
+      },
     });
 
     const validUrls = sourceType === 'web' ? pickValidWebUrls(options.sourceUrl) : pickValidSourceUrls(options.sourceUrl);
@@ -451,8 +676,11 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
 
     let mergedMarkdown = '';
     let resolvedTitle: string | undefined;
+    let resultItems: GeneratedResultItem[] | undefined;
+    let perLinkSources: Array<{ sourceUrl: string; sourceTitle?: string; preparedMd: string }> = [];
     const keyframeWarnings: string[] = [];
     const keyframeStats: Array<NonNullable<NonNullable<TaskRecord['debug']>['keyframeStats']>[number]> = [];
+    let visionImagePaths: string[] = [];
     const sourceMedias: SourceMedia[] = [];
     let preferVideoCuda = false;
     const totalUrls = validUrls.length;
@@ -543,7 +771,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
 
       const normalizedWebContents = webContents.filter(Boolean);
       if (totalUrls > 1) {
-        resolvedTitle = '多链接网页笔记';
+        resolvedTitle = generationMode === 'per_link' ? `多链接网页笔记（${totalUrls} 篇）` : '多链接网页笔记';
       } else {
         const singleWebTitle = normalizedWebContents[0]?.title?.trim();
         if (singleWebTitle) {
@@ -552,11 +780,17 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       }
 
       mergedMarkdown = buildCombinedWebMarkdown(normalizedWebContents);
+      perLinkSources = normalizedWebContents.map((item) => ({
+        sourceUrl: item.url,
+        sourceTitle: item.title,
+        preparedMd: buildCombinedWebMarkdown([item]),
+      }));
     } else {
       const pipelineConfig = loadSummaryPipelineConfig();
       preferVideoCuda = pipelineConfig.localTranscriber.device === 'cuda';
       const pipeline = createSummaryPipeline(pipelineConfig);
       const sourceMarkdownList = new Array<{ url: string; content: string }>(totalUrls);
+      const sourceTitleList = new Array<string | undefined>(totalUrls);
 
       let completedCount = 0;
       await mapWithConcurrency(validUrls, linkConcurrency, async (currentUrl, index) => {
@@ -569,10 +803,17 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
           message: `正在准备处理视频（${index + 1}/${totalUrls}，并发 ${linkConcurrency}）`,
         });
 
+        const keyframeOutputDir = path.join(taskFramesDir, `source_${index + 1}`);
         const extractResult = await pipeline.execute(currentUrl, undefined, {
           signal,
-          retainTempFile: useScreenshot,
-          enableKeyframes: useScreenshot,
+          retainTempFile: true,
+          enableKeyframes: true,
+          forceKeyframes: true,
+          preserveArtifacts: true,
+          taskTempDir,
+          videoOutputDir: taskVideoDir,
+          keyframeOutputDir,
+          asrOutputDir: path.join(taskAsrDir, `source_${index + 1}`),
           preferVideoCuda,
           onProgress: ({ stage, progress, message }) => {
             if (signal.aborted) {
@@ -627,8 +868,10 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
             resolvedTitle = title;
           }
         } else if (totalUrls > 1) {
-          resolvedTitle = '多链接视频笔记';
+          resolvedTitle = generationMode === 'per_link' ? `多链接视频笔记（${totalUrls} 篇）` : '多链接视频笔记';
         }
+
+        sourceTitleList[index] = extractResult.title?.trim() || undefined;
 
         if (extractResult.keyframeStats) {
           keyframeStats.push({
@@ -639,9 +882,13 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
         if (extractResult.warnings && extractResult.warnings.length > 0) {
           keyframeWarnings.push(...extractResult.warnings.map((item) => `[${index + 1}/${totalUrls}] ${item}`));
         }
-        if (useScreenshot && extractResult.videoFilePath) {
-          sourceMedias.push({ url: currentUrl, videoPath: extractResult.videoFilePath });
-          retainedVideoFiles.push(extractResult.videoFilePath);
+        if (extractResult.videoFilePath) {
+          sourceMedias.push({
+            url: currentUrl,
+            videoPath: extractResult.videoFilePath,
+            keyframes: extractResult.keyframes ?? [],
+            framesDir: keyframeOutputDir,
+          });
         }
 
         sourceMarkdownList[index] = { url: currentUrl, content: markdown };
@@ -667,38 +914,139 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       }
 
       mergedMarkdown = buildCombinedMarkdown(sourceMarkdownList.filter(Boolean));
-    }
+      perLinkSources = sourceMarkdownList.reduce<Array<{ sourceUrl: string; sourceTitle?: string; preparedMd: string }>>(
+        (acc, item, index) => {
+          if (!item) {
+            return acc;
+          }
+          acc.push({
+            sourceUrl: item.url,
+            sourceTitle: sourceTitleList[index],
+            preparedMd: buildCombinedMarkdown([item]),
+          });
+          return acc;
+        },
+        [],
+      );
 
-    const aiStageResult = await runAiStage(
-      taskId,
-      mergedMarkdown,
-      model,
-      effectivePrompt,
-      signal,
-      keyframeWarnings,
-      keyframeStats,
-    );
-    if (!aiStageResult.success || !aiStageResult.resultMd) {
-      return;
-    }
-
-    let resultMd = aiStageResult.resultMd;
-    if (sourceType === 'bilibili' && useScreenshot) {
-      if (sourceMedias.length === 1 && sourceMedias[0]) {
-        const screenshotResult = await replaceScreenshotMarkers({
-          markdown: resultMd,
-          videoPath: sourceMedias[0].videoPath,
-          taskId,
-          preferCuda: preferVideoCuda,
+      visionImagePaths = await prepareVisionImagePaths(taskId, sourceMedias, preferVideoCuda, keyframeWarnings);
+      if (visionImagePaths.length === 0) {
+        updateTask(taskId, {
+          status: 'failed',
+          stage: 'extract_frames',
+          progress: 82,
+          message: '未提取到可用图片',
+          error: '未提取到可用于图像理解的关键帧，请检查视频内容或更换链接后重试。',
+          retryable: false,
+          debug: {
+            keyframeStats,
+            keyframeWarnings,
+            visionImagePaths: [],
+            tempDir: taskTempDir,
+          },
         });
-        resultMd = screenshotResult.markdown;
-        if (screenshotResult.warnings.length > 0) {
-          keyframeWarnings.push(...screenshotResult.warnings);
+        return;
+      }
+    }
+
+    let resultMd = '';
+    if (generationMode === 'per_link' && perLinkSources.length > 1) {
+      const sourceMediaMap = new Map(sourceMedias.map((item) => [item.url, item]));
+      const generatedItems: GeneratedResultItem[] = [];
+      for (let index = 0; index < perLinkSources.length; index++) {
+        const source = perLinkSources[index];
+        if (!source) {
+          continue;
         }
-      } else if (sourceMedias.length > 1) {
-        keyframeWarnings.push('多链接任务暂不支持精准截图替换，已保留截图时间戳标记。');
-      } else {
-        keyframeWarnings.push('未获取到可用视频文件，无法执行原片截图替换。');
+
+        const currentProgress = 86 + Math.floor((index / Math.max(perLinkSources.length, 1)) * 10);
+        updateTaskProgress(taskId, {
+          stage: 'generate',
+          progress: currentProgress,
+          message: `正在生成第 ${index + 1}/${perLinkSources.length} 条笔记`,
+        });
+
+        const aiStageResult = await runAiStage(
+          taskId,
+          source.preparedMd,
+          model,
+          effectivePrompt,
+          signal,
+          keyframeWarnings,
+          keyframeStats,
+          visionImagePaths,
+          taskTempDir,
+        );
+        if (!aiStageResult.success || !aiStageResult.resultMd) {
+          updateTask(taskId, {
+            retryable: false,
+            message: `第 ${index + 1}/${perLinkSources.length} 条笔记生成失败`,
+          });
+          return;
+        }
+
+        let perLinkResultMd = aiStageResult.resultMd;
+        if (sourceType === 'bilibili' && useScreenshot) {
+          const media = sourceMediaMap.get(source.sourceUrl);
+          if (media) {
+            const screenshotResult = await replaceScreenshotMarkers({
+              markdown: perLinkResultMd,
+              videoPath: media.videoPath,
+              taskId: `${taskId}_${index + 1}`,
+              preferCuda: preferVideoCuda,
+            });
+            perLinkResultMd = screenshotResult.markdown;
+            if (screenshotResult.warnings.length > 0) {
+              keyframeWarnings.push(...screenshotResult.warnings.map((item) => `[${index + 1}] ${item}`));
+            }
+          } else {
+            keyframeWarnings.push(`第 ${index + 1} 条链接未获取到可用视频文件，无法执行原片截图替换。`);
+          }
+        }
+
+        generatedItems.push({
+          sourceUrl: source.sourceUrl,
+          resolvedTitle: source.sourceTitle || resolveMarkdownTitle(perLinkResultMd),
+          resultMd: perLinkResultMd,
+        });
+      }
+
+      resultItems = generatedItems;
+      resultMd = buildPerLinkResultMarkdown(generatedItems);
+    } else {
+      const aiStageResult = await runAiStage(
+        taskId,
+        mergedMarkdown,
+        model,
+        effectivePrompt,
+        signal,
+        keyframeWarnings,
+        keyframeStats,
+        visionImagePaths,
+        taskTempDir,
+      );
+      if (!aiStageResult.success || !aiStageResult.resultMd) {
+        return;
+      }
+
+      resultMd = aiStageResult.resultMd;
+      if (sourceType === 'bilibili' && useScreenshot) {
+        if (sourceMedias.length === 1 && sourceMedias[0]) {
+          const screenshotResult = await replaceScreenshotMarkers({
+            markdown: resultMd,
+            videoPath: sourceMedias[0].videoPath,
+            taskId,
+            preferCuda: preferVideoCuda,
+          });
+          resultMd = screenshotResult.markdown;
+          if (screenshotResult.warnings.length > 0) {
+            keyframeWarnings.push(...screenshotResult.warnings);
+          }
+        } else if (sourceMedias.length > 1) {
+          keyframeWarnings.push('多链接任务暂不支持精准截图替换，已保留截图时间戳标记。');
+        } else {
+          keyframeWarnings.push('未获取到可用视频文件，无法执行原片截图替换。');
+        }
       }
     }
 
@@ -715,7 +1063,9 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       stage: 'done',
       progress: 100,
       message: '生成完成',
+      generationMode,
       resultMd,
+      resultItems,
       resolvedTitle,
       retryable: false,
       preparedMd: mergedMarkdown,
@@ -723,9 +1073,13 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       debug: {
         keyframeStats,
         keyframeWarnings,
+        visionImagePaths,
+        tempDir: taskTempDir,
       },
       error: undefined,
     });
+
+    removeDirectory(taskTempDir);
   } catch (error) {
     if (isCancelledError(error)) {
       const task = getTask(taskId);
@@ -742,6 +1096,7 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
           current.error = undefined;
           current.retryable = false;
           current.resultMd = undefined;
+          current.resultItems = undefined;
           current.preparedMd = undefined;
           current.debug = undefined;
           current.updatedAt = timestamp();
@@ -763,27 +1118,41 @@ async function runTask(taskId: string, options: GenerationOptions): Promise<void
       message: '任务执行失败',
       error: withDiagnosticHint(message),
       retryable: false,
+      debug: {
+        tempDir: taskTempDir,
+      },
     });
   } finally {
-    cleanupRetainedFiles(retainedVideoFiles);
+    const task = getTask(taskId);
+    if (task?.status === 'cancelled') {
+      removeDirectory(taskTempDir);
+    }
     unregisterRunningTask(taskId);
   }
 }
 
 export function startGenerateTask(options: GenerationOptions): TaskRecord {
+  cleanupExpiredFailedTaskTempDirs();
   const now = timestamp();
+  const taskId = createId('task');
+  const taskTempDir = getTaskTempDir(taskId);
+  ensureDirectory(taskTempDir);
   const task: TaskRecord = {
-    id: createId('task'),
+    id: taskId,
     status: 'generating',
     stage: 'pending',
     progress: 0,
     message: '任务已创建，等待开始',
     sourceUrl: options.sourceUrl,
     sourceType: options.sourceType === 'web' ? 'web' : 'bilibili',
+    generationMode: resolveGenerationMode(options),
     promptId: options.promptId,
     modelId: options.modelId,
     formats: options.formats,
     retryable: false,
+    debug: {
+      tempDir: taskTempDir,
+    },
     createdAt: now,
     updatedAt: now,
   };
@@ -821,11 +1190,15 @@ export function cancelGenerateTask(taskId: string): { ok: boolean; message: stri
     current.cancelReason = 'user_cancelled';
     current.retryable = false;
     current.resultMd = undefined;
+    current.resultItems = undefined;
     current.preparedMd = undefined;
     current.debug = undefined;
     current.error = undefined;
     current.updatedAt = timestamp();
   });
+
+  const tempDir = task.debug?.tempDir ?? getTaskTempDir(taskId);
+  removeDirectory(tempDir);
 
   logDiagnostic('info', 'note-generation', 'task_cancelled', {
     taskId,
@@ -846,6 +1219,9 @@ export function retryGenerateTask(taskId: string): { ok: boolean; message: strin
   if (task.status !== 'failed' || task.stage !== 'generate' || !task.retryable || !task.preparedMd?.trim()) {
     return { ok: false, message: '当前任务不支持重试', task };
   }
+  if (task.generationMode === 'per_link') {
+    return { ok: false, message: '多链接逐条输出模式暂不支持重试，请重新发起任务', task };
+  }
 
   const model = resolveModel(task.modelId);
   if (!model || !model.enabled || !model.baseUrl || !model.apiKey) {
@@ -863,6 +1239,8 @@ export function retryGenerateTask(taskId: string): { ok: boolean; message: strin
   const preparedMd = task.preparedMd;
   const keyframeWarnings = task.debug?.keyframeWarnings ?? [];
   const keyframeStats = task.debug?.keyframeStats ?? [];
+  const visionImagePaths = task.debug?.visionImagePaths ?? [];
+  const tempDir = task.debug?.tempDir;
 
   mutateAppData((data) => {
     const current = data.tasks.find((item) => item.id === taskId);
@@ -890,6 +1268,8 @@ export function retryGenerateTask(taskId: string): { ok: boolean; message: strin
         controller.signal,
         keyframeWarnings,
         keyframeStats,
+        visionImagePaths,
+        task.debug?.tempDir,
       );
       if (!aiResult.success || !aiResult.resultMd) {
         return;
@@ -900,15 +1280,21 @@ export function retryGenerateTask(taskId: string): { ok: boolean; message: strin
         progress: 100,
         message: '生成完成',
         resultMd: aiResult.resultMd,
+        resultItems: undefined,
         retryable: false,
         preparedMd,
         cancelReason: undefined,
         debug: {
           keyframeStats,
           keyframeWarnings,
+          visionImagePaths,
+          tempDir,
         },
         error: undefined,
       });
+      if (tempDir) {
+        removeDirectory(tempDir);
+      }
     } catch (error) {
       if (!isCancelledError(error)) {
         logDiagnosticError('note-generation', 'retry_failed_unexpected', error, { taskId });
@@ -922,6 +1308,10 @@ export function retryGenerateTask(taskId: string): { ok: boolean; message: strin
         });
       }
     } finally {
+      const latest = getTask(taskId);
+      if (latest?.status === 'cancelled' && tempDir) {
+        removeDirectory(tempDir);
+      }
       unregisterRunningTask(taskId);
     }
   })();
@@ -939,6 +1329,9 @@ export function refineGenerateTask(taskId: string): { ok: boolean; message: stri
   }
   if (task.status !== 'success') {
     return { ok: false, message: '仅已完成任务支持再次整理', task };
+  }
+  if (task.generationMode === 'per_link') {
+    return { ok: false, message: '多链接逐条输出模式暂不支持再次整理，请重新发起任务', task };
   }
 
   const sourceMarkdown = task.preparedMd?.trim() || task.resultMd?.trim();
@@ -961,6 +1354,8 @@ export function refineGenerateTask(taskId: string): { ok: boolean; message: stri
   );
   const keyframeWarnings = task.debug?.keyframeWarnings ?? [];
   const keyframeStats = task.debug?.keyframeStats ?? [];
+  const visionImagePaths = task.debug?.visionImagePaths ?? [];
+  const tempDir = task.debug?.tempDir;
 
   mutateAppData((data) => {
     const current = data.tasks.find((item) => item.id === taskId);
@@ -988,6 +1383,8 @@ export function refineGenerateTask(taskId: string): { ok: boolean; message: stri
         controller.signal,
         keyframeWarnings,
         keyframeStats,
+        visionImagePaths,
+        task.debug?.tempDir,
       );
       if (!aiResult.success || !aiResult.resultMd) {
         return;
@@ -998,15 +1395,21 @@ export function refineGenerateTask(taskId: string): { ok: boolean; message: stri
         progress: 100,
         message: '再次整理完成',
         resultMd: aiResult.resultMd,
+        resultItems: undefined,
         retryable: false,
         preparedMd: sourceMarkdown,
         cancelReason: undefined,
         debug: {
           keyframeStats,
           keyframeWarnings,
+          visionImagePaths,
+          tempDir,
         },
         error: undefined,
       });
+      if (tempDir) {
+        removeDirectory(tempDir);
+      }
     } catch (error) {
       if (!isCancelledError(error)) {
         logDiagnosticError('note-generation', 'refine_failed_unexpected', error, { taskId });
@@ -1020,6 +1423,10 @@ export function refineGenerateTask(taskId: string): { ok: boolean; message: stri
         });
       }
     } finally {
+      const latest = getTask(taskId);
+      if (latest?.status === 'cancelled' && tempDir) {
+        removeDirectory(tempDir);
+      }
       unregisterRunningTask(taskId);
     }
   })();
@@ -1039,6 +1446,9 @@ export function deleteGenerateTask(taskId: string): { ok: boolean; message: stri
   mutateAppData((data) => {
     data.tasks = data.tasks.filter((item) => item.id !== taskId);
   });
+
+  const tempDir = task.debug?.tempDir ?? getTaskTempDir(taskId);
+  removeDirectory(tempDir);
 
   logDiagnostic('info', 'note-generation', 'task_deleted', {
     taskId,

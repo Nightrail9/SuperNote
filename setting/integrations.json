@@ -1,7 +1,7 @@
 {
   "jinaReader": {
     "endpoint": "https://r.jina.ai/",
-    "timeoutSec": 30,
+    "timeoutSec": 90,
     "noCache": false
   }
 }

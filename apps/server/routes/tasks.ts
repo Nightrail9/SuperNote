@@ -31,7 +31,9 @@ export function createTasksRouter(): Router {
         retryable: Boolean(task.retryable),
         resolvedTitle: task.resolvedTitle,
         sourceType: task.sourceType,
+        generationMode: task.generationMode,
         formats: task.formats,
+        resultItems: task.resultItems,
         resultMd: task.resultMd,
         debug: task.debug,
         error: task.error,
@@ -87,6 +89,20 @@ export function createTasksRouter(): Router {
   });
 
   router.delete('/tasks/:taskId', async (req: Request, res: Response) => {
+    try {
+      const taskId = String(req.params.taskId ?? '');
+      const result = deleteGenerateTask(taskId);
+      if (!result.ok) {
+        sendApiError(res, 409, 'TASK_DELETE_FAILED', result.message);
+        return;
+      }
+      res.json({ success: true, message: result.message });
+    } catch (error) {
+      sendApiError(res, 500, 'DELETE_TASK_FAILED', toErrorMessage(error, '删除任务失败'));
+    }
+  });
+
+  router.post('/tasks/:taskId/delete', async (req: Request, res: Response) => {
     try {
       const taskId = String(req.params.taskId ?? '');
       const result = deleteGenerateTask(taskId);

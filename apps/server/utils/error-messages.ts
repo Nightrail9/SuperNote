@@ -76,6 +76,11 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     suggestion: '请检查API配置或稍后重试'
   },
 
+  'UNSUPPORTED_MULTIMODAL': {
+    message: '当前模型不支持图片输入',
+    suggestion: '请更换支持视觉能力的模型后重试'
+  },
+
   // ========== Server Errors ==========
   'INTERNAL_ERROR': {
     message: '服务器内部错误',

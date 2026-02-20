@@ -92,7 +92,7 @@ export function createSettingsIntegrationsRouter(): Router {
         : 15;
       const noCache = typeof incoming?.noCache === 'boolean' ? incoming.noCache : false;
 
-      const testUrl = 'https://example.com';
+      const testUrl = 'https://en.wikipedia.org/wiki/Artificial_intelligence';
       const result = await readWebPageWithJina(testUrl, {
         endpoint,
         apiKey,
