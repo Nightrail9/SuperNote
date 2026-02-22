@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { Link, Download, Document, MagicStick, Timer, CircleCheckFilled, Loading } from '@element-plus/icons-vue'
+import { Link, Download, Document, MagicStick, Timer, CircleCheckFilled, Loading, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, type CSSProperties } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 
 import { readTaskMeta, removeTaskMeta, saveTaskMeta, setActiveTaskId } from './taskMeta'
 import { api } from '../../api/modules'
+import FullscreenToggleButton from '../../components/history/FullscreenToggleButton.vue'
 import PageBlock from '../../components/PageBlock.vue'
 import { buildMarkdownName, downloadMarkdownFile } from '../../utils/markdown'
 
@@ -37,6 +38,8 @@ const autoSaving = ref(false)
 const autoSaveDone = ref(false)
 const skipAutoSaveOnLeave = ref(false)
 const previewOpen = ref(false)
+const previewFullscreen = ref(false)
+const activePreviewIndex = ref(-1)
 
 const task = ref<{
   status: string
@@ -74,6 +77,20 @@ function resolveTitle(md: string) {
 const normalizedStatus = computed(() => (task.value?.status ?? 'generating').toLowerCase())
 const isPerLinkMode = computed(() => task.value?.generationMode === 'per_link')
 const resultItems = computed(() => task.value?.resultItems ?? [])
+const activePreviewItem = computed(() => {
+  const index = activePreviewIndex.value
+  if (index < 0) return undefined
+  return resultItems.value[index]
+})
+const canPreviewPrev = computed(() => activePreviewIndex.value > 0)
+const canPreviewNext = computed(() => activePreviewIndex.value >= 0 && activePreviewIndex.value < resultItems.value.length - 1)
+const activePreviewTitle = computed(() => {
+  if (!isPerLinkMode.value) return finalTitle.value || '生成结果预览'
+  const index = activePreviewIndex.value
+  const item = resultItems.value[index]
+  if (!item) return '生成结果预览'
+  return resolveResultItemTitle(item, index)
+})
 const taskStatus = computed<'generating' | 'success' | 'failed' | 'cancelled'>(() => {
   if (cancelledTaskStates.has(normalizedStatus.value)) return 'cancelled'
   if (failedTaskStates.has(normalizedStatus.value)) return 'failed'
@@ -627,11 +644,40 @@ function openPreview() {
     ElMessage.warning('任务完成后可预览')
     return
   }
+  activePreviewIndex.value = -1
+  previewFullscreen.value = false
   previewOpen.value = true
+}
+
+function openItemPreview(index: number) {
+  if (!canOperate.value) {
+    ElMessage.warning('任务完成后可预览')
+    return
+  }
+  if (!resultItems.value.length) {
+    ElMessage.warning('暂无可预览内容')
+    return
+  }
+  const resolvedIndex = Math.max(0, Math.min(resultItems.value.length - 1, Math.floor(index)))
+  activePreviewIndex.value = resolvedIndex
+  previewFullscreen.value = false
+  previewOpen.value = true
+}
+
+function previewPrev() {
+  if (!canPreviewPrev.value) return
+  activePreviewIndex.value -= 1
+}
+
+function previewNext() {
+  if (!canPreviewNext.value) return
+  activePreviewIndex.value += 1
 }
 
 function closePreview() {
   previewOpen.value = false
+  previewFullscreen.value = false
+  activePreviewIndex.value = -1
 }
 
 onMounted(async () => {
@@ -816,84 +862,85 @@ onBeforeUnmount(() => {
           v-if="isPerLinkMode"
           class="result-finish-shell"
         >
-          <el-card
-            shadow="never"
-            class="result-complete-card"
-          >
-            <div class="result-complete-main">
-              <div class="result-complete-head">
-                <el-tag
-                  effect="dark"
-                  type="success"
-                  size="small"
-                >
-                  完成
-                </el-tag>
-                <el-text type="info">
-                  已按链接独立生成，共 {{ resultItems.length }} 篇笔记
-                </el-text>
-              </div>
-              <el-text
-                tag="strong"
-                size="large"
-              >
-                可逐条下载，或一键批量保存为草稿/笔记
-              </el-text>
-            </div>
-          </el-card>
-          <div class="result-action-panel">
-            <div class="result-core-actions">
-              <el-button @click="handleDownload">
-                下载全部 .md
-              </el-button>
-                <el-button
-                  :loading="saveAllDraftsLoading"
-                  @click="saveAllDrafts"
-                >
-                  全部保存为草稿
-                </el-button>
-                <el-button
-                  type="primary"
-                  :loading="saveAllNotesLoading"
-                  @click="saveAllNotes"
-                >
-                  全部保存为笔记
-              </el-button>
-              <el-button
-                type="danger"
-                plain
-                :loading="deleteResultLoading"
-                @click="handleDeleteResult"
-              >
-                删除结果
-              </el-button>
-            </div>
-          </div>
-          <el-card
-            v-for="(item, index) in resultItems"
-            :key="`${item.sourceUrl}-${index}`"
-            shadow="never"
-            class="result-action-panel"
+           <el-card
+             shadow="never"
+             class="result-complete-card"
+           >
+             <div class="result-complete-layout">
+               <div class="result-complete-main">
+                 <div class="result-complete-head">
+                   <el-tag
+                     effect="dark"
+                     type="success"
+                     size="small"
+                   >
+                     完成
+                   </el-tag>
+                   <el-text type="info">
+                     已按链接独立生成，共 {{ resultItems.length }} 篇笔记
+                   </el-text>
+                 </div>
+                 <el-text
+                   tag="strong"
+                   size="large"
+                 >
+                   可逐条下载，或一键批量保存为草稿/笔记
+                 </el-text>
+               </div>
+               <div class="result-core-actions result-complete-actions">
+                 <el-button @click="handleDownload">
+                   下载全部 .md
+                 </el-button>
+                 <el-button
+                   :loading="saveAllDraftsLoading"
+                   @click="saveAllDrafts"
+                 >
+                   全部保存为草稿
+                 </el-button>
+                 <el-button
+                   type="primary"
+                   :loading="saveAllNotesLoading"
+                   @click="saveAllNotes"
+                 >
+                   全部保存为笔记
+                 </el-button>
+                 <el-button
+                   type="danger"
+                   plain
+                   :loading="deleteResultLoading"
+                   @click="handleDeleteResult"
+                 >
+                   删除结果
+                 </el-button>
+               </div>
+             </div>
+           </el-card>
+           <el-card
+             v-for="(item, index) in resultItems"
+             :key="`${item.sourceUrl}-${index}`"
+             shadow="never"
+             class="result-action-panel"
           >
             <div class="result-action-head">
-              <div class="result-action-head-copy">
-                <el-text tag="strong">
-                  {{ index + 1 }}. {{ resolveResultItemTitle(item, index) }}
-                </el-text>
-                <el-text
-                  size="small"
-                  type="info"
-                >
-                  {{ item.sourceUrl }}
-                </el-text>
-              </div>
-            </div>
-            <div class="result-core-actions">
-              <el-button
-                @click="downloadMarkdownFile(item.resultMd, buildMarkdownName(resolveResultItemTitle(item, index)))"
+              <el-text
+                tag="strong"
+                class="result-item-title"
               >
-                下载此篇
-              </el-button>
+                {{ index + 1 }}. {{ resolveResultItemTitle(item, index) }}
+              </el-text>
+              <div class="result-core-actions result-core-actions-inline">
+                <el-button
+                  :icon="View"
+                  @click="openItemPreview(index)"
+                >
+                  预览此篇
+                </el-button>
+                <el-button
+                  @click="downloadMarkdownFile(item.resultMd, buildMarkdownName(resolveResultItemTitle(item, index)))"
+                >
+                  下载此篇
+                </el-button>
+              </div>
             </div>
           </el-card>
           <div class="result-duration-note">
@@ -1002,10 +1049,11 @@ onBeforeUnmount(() => {
         </div>
 
         <el-dialog
-          v-if="!isPerLinkMode"
+          v-if="isPerLinkMode"
           v-model="previewOpen"
-          title="生成结果预览"
+          :title="activePreviewTitle"
           width="72%"
+          :fullscreen="previewFullscreen"
           align-center
           append-to-body
           class="history-preview-dialog task-preview-dialog"
@@ -1017,7 +1065,74 @@ onBeforeUnmount(() => {
             shadow="never"
             class="history-preview-card task-preview-card"
           >
-            <div class="history-preview-body">
+            <div class="history-preview-toolbar">
+              <el-text
+                type="info"
+                class="history-preview-counter"
+              >
+                第 {{ activePreviewIndex + 1 }} / {{ resultItems.length }} 条
+              </el-text>
+              <div class="history-preview-nav">
+                <FullscreenToggleButton v-model="previewFullscreen" />
+                <el-button
+                  :disabled="!canPreviewPrev"
+                  @click="previewPrev"
+                >
+                  上一条
+                </el-button>
+                <el-button
+                  type="primary"
+                  :disabled="!canPreviewNext"
+                  @click="previewNext"
+                >
+                  下一条
+                </el-button>
+              </div>
+            </div>
+            <div
+              class="history-preview-body"
+              :class="{ 'history-preview-body-fullscreen': previewFullscreen }"
+            >
+              <MarkdownPreview
+                v-if="previewOpen"
+                :source="activePreviewItem?.resultMd || ''"
+              />
+            </div>
+          </el-card>
+        </el-dialog>
+
+        <el-dialog
+          v-else
+          v-model="previewOpen"
+          :title="finalTitle || '生成结果预览'"
+          width="72%"
+          :fullscreen="previewFullscreen"
+          align-center
+          append-to-body
+          class="history-preview-dialog task-preview-dialog"
+          :z-index="3000"
+          :close-on-click-modal="false"
+          @closed="closePreview"
+        >
+          <el-card
+            shadow="never"
+            class="history-preview-card task-preview-card"
+          >
+            <div class="history-preview-toolbar">
+              <el-text
+                type="info"
+                class="history-preview-counter"
+              >
+                生成结果预览
+              </el-text>
+              <div class="history-preview-nav">
+                <FullscreenToggleButton v-model="previewFullscreen" />
+              </div>
+            </div>
+            <div
+              class="history-preview-body"
+              :class="{ 'history-preview-body-fullscreen': previewFullscreen }"
+            >
               <MarkdownPreview
                 v-if="previewOpen"
                 :source="markdown"
@@ -1264,6 +1379,20 @@ onBeforeUnmount(() => {
 .result-complete-main {
   display: grid;
   gap: 10px;
+  min-width: 260px;
+  flex: 1;
+}
+
+.result-complete-layout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.result-complete-actions {
+  justify-content: flex-end;
 }
 
 .result-finish-shell {
@@ -1305,6 +1434,15 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.result-item-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.result-core-actions-inline {
+  justify-content: flex-end;
+}
+
 .result-action-head-copy {
   display: grid;
   gap: 2px;
@@ -1329,10 +1467,27 @@ onBeforeUnmount(() => {
   border-radius: 12px;
 }
 
+.history-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.history-preview-nav {
+  display: flex;
+  gap: 8px;
+}
+
 .history-preview-body {
   min-height: 460px;
   max-height: 62vh;
   overflow: auto;
+}
+
+.history-preview-body-fullscreen {
+  max-height: calc(100vh - 210px);
 }
 
 .result-title-input {
@@ -1388,6 +1543,15 @@ onBeforeUnmount(() => {
 
   .web-ring-panel {
     justify-items: flex-start;
+  }
+
+  .result-complete-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .result-complete-actions {
+    justify-content: flex-start;
   }
 
   .result-action-panel {
