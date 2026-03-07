@@ -7,9 +7,7 @@ coverage/
 *.tsbuildinfo
 
 # Runtime outputs
-data/temp/
-data/screenshots/
-data/public/screenshots/
+data/
 temp/
 
 # Legacy path kept locally when files are locked by editor/processes
@@ -37,3 +35,7 @@ GEMINI.md
 # OS files
 .DS_Store
 Thumbs.db
+
+# Python cache
+__pycache__/
+*.pyc
